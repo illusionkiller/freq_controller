@@ -391,6 +391,7 @@
 /* Micrium: Micrium software products porting for RT-Thread */
 
 /* end of Micrium: Micrium software products porting for RT-Thread */
+#define FAL_DEBUG_CONFIG
 #define PKG_USING_LITTLEFS
 #define PKG_USING_LITTLEFS_LATEST_VERSION
 #define LFS_READ_SIZE 256
@@ -528,8 +529,11 @@
 
 /* Onboard Peripheral Drivers */
 
-#define SOC_STM32H750_ARTPI
-#define BSP_USING_ETH_H750
+#define BSP_USING_QSPI_FLASH
+#define BSP_USING_FS
+#define BSP_USING_SPI_FLASH_LITTLEFS
+#define BSP_USING_FAL
+#define BSP_USING_ETH
 #define ETH_RESET_PIN "PC.0"
 #define PHY_USING_LAN8720A
 /* end of Onboard Peripheral Drivers */
@@ -546,6 +550,30 @@
 #define BSP_UART1_RX_BUFSIZE 256
 #define BSP_UART1_TX_BUFSIZE 256
 #define BSP_UART1_DMA_PING_BUFSIZE 64
+#define BSP_USING_UART2
+#define BSP_UART2_RX_USING_DMA
+#define BSP_UART2_TX_USING_DMA
+#define BSP_UART2_RX_BUFSIZE 256
+#define BSP_UART2_TX_BUFSIZE 256
+#define BSP_UART2_DMA_PING_BUFSIZE 64
+#define BSP_USING_UART3
+#define BSP_UART3_RX_USING_DMA
+#define BSP_UART3_TX_USING_DMA
+#define BSP_UART3_RX_BUFSIZE 256
+#define BSP_UART3_TX_BUFSIZE 256
+#define BSP_UART3_DMA_PING_BUFSIZE 64
+#define BSP_USING_UART7
+#define BSP_UART7_RX_USING_DMA
+#define BSP_UART7_TX_USING_DMA
+#define BSP_UART7_RX_BUFSIZE 256
+#define BSP_UART7_TX_BUFSIZE 256
+#define BSP_UART7_DMA_PING_BUFSIZE 64
+#define BSP_USING_UART8
+#define BSP_UART8_RX_USING_DMA
+#define BSP_UART8_TX_USING_DMA
+#define BSP_UART8_RX_BUFSIZE 256
+#define BSP_UART8_TX_BUFSIZE 256
+#define BSP_UART8_DMA_PING_BUFSIZE 64
 #define BSP_USING_QSPI
 #define BSP_USING_I2C
 #define BSP_USING_I2C1

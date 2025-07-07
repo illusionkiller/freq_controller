@@ -12,7 +12,7 @@
 #ifndef  __DRV_PMTIMER_H__
 #define  __DRV_PMTIMER_H__
 
-#include <rtthread.h>
+#include "drv_config.h"
 
 /* 0x20 - 0x3F udevice control commands*/
 typedef enum

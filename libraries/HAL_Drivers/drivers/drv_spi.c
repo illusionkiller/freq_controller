@@ -13,16 +13,12 @@
  * 2020-10-14     Dozingfiretruck   Porting for stm32wbxx
  */
 
-#include <rtthread.h>
-#include <rtdevice.h>
-#include "board.h"
 
 #ifdef BSP_USING_SPI
 
 #if defined(BSP_USING_SPI1) || defined(BSP_USING_SPI2) || defined(BSP_USING_SPI3) || defined(BSP_USING_SPI4) || defined(BSP_USING_SPI5) || defined(BSP_USING_SPI6)
 
 #include "drv_spi.h"
-#include "drv_config.h"
 #include <string.h>
 
 //#define DRV_DEBUG

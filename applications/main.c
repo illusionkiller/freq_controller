@@ -8,9 +8,7 @@
  * 2019-03-05     whj4674672   first version
  */
 
-#include <rtthread.h>
-#include <rtdevice.h>
-#include <board.h>
+#include "drv_gpio.h"
 
 /* defined the LED0 pin: PB1 */
 #define LED0_PIN    GET_PIN(E, 9)

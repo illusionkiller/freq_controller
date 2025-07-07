@@ -11,7 +11,7 @@
 #ifndef __DRV_QSPI_H__
 #define __DRV_QSPI_H__
 
-#include <rtthread.h>
+#include "drv_config.h"
 
 #ifdef __cplusplus
 extern "C" {

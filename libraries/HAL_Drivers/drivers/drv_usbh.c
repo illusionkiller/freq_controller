@@ -10,7 +10,6 @@
  */
 
 #include "drv_usbh.h"
-#include "board.h"
 
 #define LOG_TAG       "drv.usb.host"
 #define DBG_LVL       DBG_INFO

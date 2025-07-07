@@ -8,11 +8,9 @@
  * 2019-01-08     zylx         first version
  */
 
-#include <board.h>
 
 #ifdef BSP_USING_LCD
 #include <lcd_port.h>
-#include <rtdevice.h>
 #include <string.h>
 
 #define DRV_DEBUG

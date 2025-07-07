@@ -19,8 +19,7 @@
 extern "C" {
 #endif
 
-#include <board.h>
-#include <rtdevice.h>
+#include "drv_config.h"
 
 #define BS1SHIFT        16
 #define BS2SHIFT        20

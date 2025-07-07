@@ -1,9 +1,6 @@
 menu "Hardware Drivers Config"
 
 menu "Onboard Peripheral Drivers"
-    config SOC_STM32H750_ARTPI
-        bool 
-        default y
         
     config BSP_USING_COM1
         bool "Enable COM1(485)"
@@ -57,23 +54,30 @@ menu "Onboard Peripheral Drivers"
             config BSP_USING_SPI_FLASH_LITTLEFS
                 bool "Enable SPI-FLASH (LittleFS)"
                 select RT_USING_MTD_NOR
-                select BSP_USING_QSPI_FLASH
-                select RT_USING_FAL
-                select FAL_PART_HAS_TABLE_CFG
                 select PKG_USING_LITTLEFS
+                select BSP_USING_FAL
                 default n
         endif
+    
+    config BSP_USING_FAL
+        bool "Enable FAL (enable on-chip flash and spi flash)"
+        select BSP_USING_QSPI_FLASH
+        select RT_USING_FAL
+        select FAL_DEBUG_CONFIG
+        select FAL_PART_HAS_TABLE_CFG
+        select FAL_USING_SFUD_PORT
+        select BSP_USING_ON_CHIP_FLASH
 
-    menuconfig BSP_USING_ETH_H750
+    menuconfig BSP_USING_ETH
         bool "Enable Ethernet"
         default n
         select RT_USING_LWIP
-        if BSP_USING_ETH_H750
+        if BSP_USING_ETH
             config ETH_RESET_PIN
                 string "ETH RESET PIN"
                 default "PC.0"
         endif
-        if BSP_USING_ETH_H750
+        if BSP_USING_ETH
             choice
                 prompt "Choose ETH PHY"
                 default PHY_USING_LAN8720A
@@ -98,7 +102,7 @@ menu "On-chip Peripheral Drivers"
         select RT_USING_PIN
         default y
 
-    menuconfig BSP_USING_UART
+    config BSP_USING_UART
         bool "Enable UART"
         default y
         select RT_USING_SERIAL
@@ -286,8 +290,16 @@ menu "On-chip Peripheral Drivers"
         select RT_USING_QSPI
         select RT_USING_SPI
         default n
+        if BSP_USING_QSPI
+            config BSP_QSPI_USING_DMA
+                bool "Enable QSPI DMA support"
+                default n
+            config BSP_QSPI_USING_SOFT_CS
+                bool "Enable QSPI Soft CS Pin"
+                default n
+        endif
 
-    menuconfig BSP_USING_I2C
+    config BSP_USING_I2C
         bool "Enable I2C BUS (software simulation)"
         select RT_USING_I2C
         select RT_USING_I2C_BITOPS

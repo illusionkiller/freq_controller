@@ -8,9 +8,6 @@
  * 2018-12-07     balanceTWK        first version
  */
 
-#include <board.h>
-#include <rtthread.h>
-
 #ifdef RT_USING_WDT
 #include "drv_config.h"
 

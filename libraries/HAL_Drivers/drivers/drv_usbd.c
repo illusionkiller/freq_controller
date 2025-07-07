@@ -9,13 +9,10 @@
  * 2019-10-27     flybreak     Compatible with the HS
  */
 
-#include <rtthread.h>
 
 #ifdef BSP_USING_USBD
-#include <rtdevice.h>
-#include "board.h"
-#include <string.h>
-#include <drv_config.h>
+
+#include "drv_config.h"
 
 static PCD_HandleTypeDef _stm_pcd;
 static struct udcd _stm_udc;

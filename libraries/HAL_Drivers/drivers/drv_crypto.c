@@ -12,12 +12,10 @@
  * 2020-12-11     WKJay        fix build problem
  */
 
-#include <rtdevice.h>
 #include <stdlib.h>
 #include <string.h>
 #include "drv_crypto.h"
-#include <board.h>
-#include "drv_config.h"
+
 
 struct stm32_hwcrypto_device
 {

@@ -9,10 +9,7 @@
  * 2024-07-04     wdfk-prog       lptimer is register with hwtimer, only supports pm calls,the timer function is not supported
  */
 
-#include <board.h>
-#include <drv_lptim.h>
-#include <rtdevice.h>
-#include "drv_config.h"
+#include "drv_lptim.h"
 
 /*#define DRV_DEBUG*/
 #define LOG_TAG             "drv.lptim"

@@ -11,10 +11,8 @@
 #ifndef __DRV_HARD_I2C_H__
 #define __DRV_HARD_I2C_H__
 
-#include <drv_common.h>
+
 #include "drv_dma.h"
-#include "drv_config.h"
-#include <ipc/completion.h>
 
 /* C binding of definitions if building with C++ compiler */
 #ifdef __cplusplus

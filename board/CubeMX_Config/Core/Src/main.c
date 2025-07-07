@@ -105,11 +105,11 @@ static void MX_I2C3_Init(void);
 static void MX_UART7_Init(void);
 static void MX_UART8_Init(void);
 static void MX_USART2_UART_Init(void);
-static void MX_USART3_UART_Init(void);
 static void MX_RAMECC_Init(void);
 static void MX_IWDG1_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_QUADSPI_Init(void);
+static void MX_USART3_UART_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -166,11 +166,11 @@ int main(void)
   MX_UART7_Init();
   MX_UART8_Init();
   MX_USART2_UART_Init();
-  MX_USART3_UART_Init();
   MX_RAMECC_Init();
   MX_IWDG1_Init();
   MX_USART1_UART_Init();
   MX_QUADSPI_Init();
+  MX_USART3_UART_Init();
   /* USER CODE BEGIN 2 */
 
   /* USER CODE END 2 */

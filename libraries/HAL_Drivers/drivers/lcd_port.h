@@ -10,7 +10,7 @@
 
 #ifndef __LCD_PORT_H__
 #define __LCD_PORT_H__
-
+#include "drv_config.h"
 /* atk 4.3 inch screen, 480 * 272 */
 #define LCD_WIDTH           480
 #define LCD_HEIGHT          272

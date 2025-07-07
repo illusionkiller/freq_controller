@@ -22,26 +22,34 @@ extern "C" {
 #define QSPI_BUS_CONFIG                                        \
     {                                                          \
         .Instance = QUADSPI,                                   \
-        .Init.FifoThreshold = 4,                               \
+        .Init.FifoThreshold = 32,                               \
         .Init.SampleShifting = QSPI_SAMPLE_SHIFTING_HALFCYCLE, \
         .Init.ChipSelectHighTime = QSPI_CS_HIGH_TIME_4_CYCLE,  \
+        .Init.FlashID = QSPI_FLASH_ID_1,                       \
+        .Init.DualFlash = QSPI_DUALFLASH_DISABLE,              \
     }
 #endif /* QSPI_BUS_CONFIG */
 #endif /* BSP_USING_QSPI */
 
 #ifdef BSP_QSPI_USING_DMA
 #ifndef QSPI_DMA_CONFIG
-#define QSPI_DMA_CONFIG                                        \
-    {                                                          \
-        .Instance = QSPI_DMA_INSTANCE,                         \
-        .Init.Channel  = QSPI_DMA_CHANNEL,                     \
-        .Init.Direction = DMA_PERIPH_TO_MEMORY,                \
-        .Init.PeriphInc = DMA_PINC_DISABLE,                    \
-        .Init.MemInc = DMA_MINC_ENABLE,                        \
-        .Init.PeriphDataAlignment = DMA_PDATAALIGN_BYTE,       \
-        .Init.MemDataAlignment = DMA_MDATAALIGN_BYTE,          \
-        .Init.Mode = DMA_NORMAL,                               \
-        .Init.Priority = DMA_PRIORITY_LOW                      \
+#define QSPI_DMA_CONFIG                                     \
+    {                                                       \
+        .Instance = QSPI_DMA_INSTANCE,                      \
+        .Init.Request = MDMA_REQUEST_QUADSPI_FIFO_TH,       \
+        .Init.TransferTriggerMode = MDMA_BUFFER_TRANSFER,   \
+        .Init.Priority = MDMA_PRIORITY_LOW,                 \
+        .Init.Endianness = MDMA_LITTLE_ENDIANNESS_PRESERVE, \
+        .Init.SourceInc = MDMA_SRC_INC_BYTE,                \
+        .Init.DestinationInc = MDMA_DEST_INC_BYTE,          \
+        .Init.SourceDataSize = MDMA_SRC_DATASIZE_BYTE,      \
+        .Init.DestDataSize = MDMA_DEST_DATASIZE_BYTE,       \
+        .Init.DataAlignment = MDMA_DATAALIGN_PACKENABLE,    \
+        .Init.BufferTransferLength = 1,                     \
+        .Init.SourceBurst = MDMA_SOURCE_BURST_SINGLE,       \
+        .Init.DestBurst = MDMA_DEST_BURST_SINGLE,           \
+        .Init.SourceBlockAddressOffset = 0,                 \
+        .Init.DestBlockAddressOffset = 0,                   \
     }
 #endif /* QSPI_DMA_CONFIG */
 #endif /* BSP_QSPI_USING_DMA */

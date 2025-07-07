@@ -8,10 +8,7 @@
  * 2018-11-27     zylx         first version
  */
 
-#include "board.h"
 #include "drv_qspi.h"
-#include "drv_config.h"
-
 #ifdef RT_USING_QSPI
 
 #define DRV_DEBUG
@@ -25,7 +22,7 @@ struct stm32_qspi_bus
     QSPI_HandleTypeDef QSPI_Handler;
     char *bus_name;
 #ifdef BSP_QSPI_USING_DMA
-    DMA_HandleTypeDef hdma_quadspi;
+    MDMA_HandleTypeDef hmdma_quadspi_fifo_th;
 #endif
 };
 
@@ -88,38 +85,33 @@ static int stm32_qspi_init(struct rt_qspi_device *device, struct rt_qspi_configu
     }
 
 #ifdef BSP_QSPI_USING_DMA
+    __HAL_RCC_MDMA_CLK_ENABLE();
+    
     /* QSPI interrupts must be enabled when using the HAL_QSPI_Receive_DMA */
-    HAL_NVIC_SetPriority(QSPI_IRQn, 0, 0);
-    HAL_NVIC_EnableIRQ(QSPI_IRQn);
     HAL_NVIC_SetPriority(QSPI_DMA_IRQ, 0, 0);
     HAL_NVIC_EnableIRQ(QSPI_DMA_IRQ);
 
-    /* init QSPI DMA */
-    if(QSPI_DMA_RCC  == RCC_AHB1ENR_DMA1EN)
-    {
-        __HAL_RCC_DMA1_CLK_ENABLE();
-    }
-    else
-    {
-        __HAL_RCC_DMA2_CLK_ENABLE();
-    }
+    HAL_MDMA_DeInit(&qspi_bus->hmdma_quadspi_fifo_th);
 
-    HAL_DMA_DeInit(qspi_bus->QSPI_Handler.hdma);
-    DMA_HandleTypeDef hdma_quadspi_config = QSPI_DMA_CONFIG;
-    qspi_bus->hdma_quadspi = hdma_quadspi_config;
+    MDMA_HandleTypeDef hdma_quadspi_config = QSPI_DMA_CONFIG;
+    qspi_bus->hmdma_quadspi_fifo_th = hdma_quadspi_config;
 
-    if (HAL_DMA_Init(&qspi_bus->hdma_quadspi) != HAL_OK)
+    if (HAL_MDMA_Init(&qspi_bus->hmdma_quadspi_fifo_th) != HAL_OK)
     {
         LOG_E("qspi dma init failed (%d)!", result);
     }
 
-    __HAL_LINKDMA(&qspi_bus->QSPI_Handler, hdma, qspi_bus->hdma_quadspi);
-#endif /* BSP_QSPI_USING_DMA */
+    if (HAL_MDMA_ConfigPostRequestMask(&qspi_bus->hmdma_quadspi_fifo_th, 0, 0) != HAL_OK)
+    {
+        LOG_E("qspi dma init failed (%d)!", result);
+    }
+    __HAL_LINKDMA(&qspi_bus->QSPI_Handler, hmdma, qspi_bus->hmdma_quadspi_fifo_th);
 
+#endif /* BSP_QSPI_USING_DMA */
     return result;
 }
 
-static void qspi_send_cmd(struct stm32_qspi_bus *qspi_bus, struct rt_qspi_message *message)
+static HAL_StatusTypeDef qspi_send_cmd(struct stm32_qspi_bus *qspi_bus, struct rt_qspi_message *message)
 {
     RT_ASSERT(qspi_bus != RT_NULL);
     RT_ASSERT(message != RT_NULL);
@@ -192,7 +184,7 @@ static void qspi_send_cmd(struct stm32_qspi_bus *qspi_bus, struct rt_qspi_messag
     Cmdhandler.DdrMode = QSPI_DDR_MODE_DISABLE;
     Cmdhandler.DdrHoldHalfCycle = QSPI_DDR_HHC_ANALOG_DELAY;
     Cmdhandler.NbData = message->parent.length;
-    HAL_QSPI_Command(&qspi_bus->QSPI_Handler, &Cmdhandler, 5000);
+    return HAL_QSPI_Command(&qspi_bus->QSPI_Handler, &Cmdhandler, 5000);
 }
 
 static rt_ssize_t qspixfer(struct rt_spi_device *device, struct rt_spi_message *message)
@@ -219,7 +211,13 @@ static rt_ssize_t qspixfer(struct rt_spi_device *device, struct rt_spi_message *
     /* send data */
     if (sndb)
     {
-        qspi_send_cmd(qspi_bus, qspi_message);
+        if (qspi_send_cmd(qspi_bus, qspi_message) != HAL_OK)
+        {
+            LOG_E("QSPI send cmd failed(%d)!", qspi_bus->QSPI_Handler.ErrorCode);
+            qspi_bus->QSPI_Handler.State = HAL_QSPI_STATE_READY;
+            result = -RT_ERROR;
+            goto __exit;
+        }
         if (qspi_message->parent.length != 0)
         {
             if (HAL_QSPI_Transmit(&qspi_bus->QSPI_Handler, (rt_uint8_t *)sndb, 5000) == HAL_OK)
@@ -241,7 +239,13 @@ static rt_ssize_t qspixfer(struct rt_spi_device *device, struct rt_spi_message *
     }
     else if (rcvb)/* recv data */
     {
-        qspi_send_cmd(qspi_bus, qspi_message);
+        if (qspi_send_cmd(qspi_bus, qspi_message) != HAL_OK)
+        {
+            LOG_E("QSPI send cmd failed(%d)!", qspi_bus->QSPI_Handler.ErrorCode);
+            qspi_bus->QSPI_Handler.State = HAL_QSPI_STATE_READY;
+            result = -RT_ERROR;
+            goto __exit;
+        }
 #ifdef BSP_QSPI_USING_DMA
         if (HAL_QSPI_Receive_DMA(&qspi_bus->QSPI_Handler, rcvb) == HAL_OK)
 #else
@@ -357,18 +361,20 @@ void QSPI_IRQHandler(void)
     rt_interrupt_leave();
 }
 
+/**
+ * @brief This function handles MDMA global interrupt.
+ */
 void QSPI_DMA_IRQHandler(void)
 {
     /* enter interrupt */
     rt_interrupt_enter();
 
-    HAL_DMA_IRQHandler(&_stm32_qspi_bus.hdma_quadspi);
+    HAL_MDMA_IRQHandler(&_stm32_qspi_bus.hmdma_quadspi_fifo_th);
 
     /* leave interrupt */
     rt_interrupt_leave();
 }
-#endif /* BSP_QSPI_USING_DMA */
-
+#endif
 static int rt_hw_qspi_bus_init(void)
 {
     return stm32_qspi_register_bus(&_stm32_qspi_bus, "qspi1");

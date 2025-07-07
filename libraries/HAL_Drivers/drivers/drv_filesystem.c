@@ -10,7 +10,7 @@
  * 2021-07-28     Meco Man     implement romfs as the root filesystem
  */
 
-#include <rtthread.h>
+#include "drv_config.h"
 #include <dfs_romfs.h>
 #include <dfs_fs.h>
 #include <dfs_file.h>
@@ -22,9 +22,9 @@
 #error "Please define DFS_FILESYSTEM_TYPES_MAX more than 4"
 #endif
 
-#define DBG_TAG "app.filesystem"
-#define DBG_LVL DBG_INFO
-#include <rtdbg.h>
+#define LOG_TAG "drv.filesystem"
+// #define DRV_DEBUG
+#include <drv_log.h>
 
 #ifdef BSP_USING_SDCARD_FATFS
 static int onboard_sdcard_mount(void)

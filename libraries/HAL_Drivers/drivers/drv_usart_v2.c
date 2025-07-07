@@ -8,25 +8,19 @@
  * 2021-06-01     KyleChan     first version
  */
 
-#include "board.h"
 #include "drv_usart_v2.h"
 
 #ifdef RT_USING_SERIAL_V2
 
+#define LOG_TAG "drv.usart_v2"
 // #define DRV_DEBUG
-#define DBG_TAG              "drv.usart"
-#ifdef DRV_DEBUG
-#define DBG_LVL               DBG_LOG
-#else
-#define DBG_LVL               DBG_INFO
-#endif /* DRV_DEBUG */
-#include <rtdbg.h>
+#include <drv_log.h>
 
 #if !defined(BSP_USING_UART1) && !defined(BSP_USING_UART2) && !defined(BSP_USING_UART3) && \
     !defined(BSP_USING_UART4) && !defined(BSP_USING_UART5) && !defined(BSP_USING_UART6) && \
     !defined(BSP_USING_UART7) && !defined(BSP_USING_UART8) && !defined(BSP_USING_LPUART1)
     #error "Please define at least one BSP_USING_UARTx"
-    /* this driver can be disabled at menuconfig -> RT-Thread Components -> Device Drivers */
+/* this driver can be disabled at menuconfig -> RT-Thread Components -> Device Drivers */
 #endif
 
 #ifdef RT_SERIAL_USING_DMA
@@ -393,6 +387,9 @@ static rt_ssize_t stm32_transmit(struct rt_serial_device     *serial,
 
     if (uart->uart_dma_flag & RT_DEVICE_FLAG_DMA_TX)
     {
+#ifdef RT_USING_CACHE
+        rt_hw_cpu_dcache_ops(RT_HW_CACHE_FLUSH, buf, size);
+#endif
         HAL_UART_Transmit_DMA(&uart->handle, buf, size);
         return size;
     }
@@ -422,7 +419,10 @@ static void dma_recv_isr(struct rt_serial_device *serial, rt_uint8_t isr_flag)
 #if defined (__DCACHE_PRESENT) && (__DCACHE_PRESENT == 1U)
         rt_uint8_t *ptr = NULL;
         rt_hw_serial_control_isr(serial, RT_HW_SERIAL_CTRL_GET_DMA_PING_BUF, &ptr);
-        SCB_InvalidateDCache_by_Addr((uint32_t *)ptr, serial->config.dma_ping_bufsz);
+#ifdef  RT_USING_CACHE
+        rt_hw_cpu_dcache_ops(RT_HW_CACHE_INVALIDATE, (void *)ptr, serial->config.dma_ping_bufsz);
+#endif
+        // SCB_InvalidateDCache_by_Addr((uint32_t *)ptr, serial->config.dma_ping_bufsz);
 #endif
         uart->dma_rx.remaining_cnt = counter;
         rt_hw_serial_isr(serial, RT_SERIAL_EVENT_RX_DMADONE | (recv_len << 8));

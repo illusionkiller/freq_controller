@@ -12,8 +12,7 @@
 #ifndef __DRV_DMA_H_
 #define __DRV_DMA_H_
 
-#include <rtthread.h>
-#include <board.h>
+#include "drv_config.h"
 
 #ifdef __cplusplus
 extern "C" {

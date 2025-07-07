@@ -11,12 +11,7 @@
 #ifndef __DRV_SPI_H__
 #define __DRV_SPI_H__
 
-#include <rtthread.h>
-#include "rtdevice.h"
-#include <rthw.h>
-#include <drv_common.h>
 #include "drv_dma.h"
-#include <ipc/completion.h>
 
 #ifdef __cplusplus
 extern "C" {

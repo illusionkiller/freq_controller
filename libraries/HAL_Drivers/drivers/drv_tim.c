@@ -14,8 +14,7 @@
  * 2023-12-24     Meco Man     add TIMx existing check
  */
 
-#include <rtdevice.h>
-#include "drv_config.h"
+#include "drv_time.h"
 
 //#define DRV_DEBUG
 #define LOG_TAG             "drv.tim"

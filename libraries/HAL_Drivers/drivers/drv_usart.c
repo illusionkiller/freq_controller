@@ -13,9 +13,8 @@
  * 2020-10-14     Dozingfiretruck   Porting for stm32wbxx
  */
 
-#include "board.h"
 #include "drv_usart.h"
-#include "drv_config.h"
+
 
 #ifdef RT_USING_SERIAL
 

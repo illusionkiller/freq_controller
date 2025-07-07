@@ -5,7 +5,7 @@ import os
 
 cwd = GetCurrentDir()
 group = []
-src = []
+src = ["drv_mpu.c"]
 path = [cwd]
 
 if GetDepend(['RT_USING_PIN']):
@@ -129,6 +129,14 @@ path += [os.path.join(cwd, 'config')]
 if GetDepend('BSP_USING_ON_CHIP_FLASH'):
     path += [os.path.join(cwd, 'drv_flash')]
 
+
+if GetDepend(['BSP_USING_FS']):
+    src += Glob('drv_filesystem.c')
+
+if GetDepend(['BSP_USING_QSPI_FLASH']):
+    src += Glob('drv_qspi_flash.c')
+
+            
 group = DefineGroup('Drivers', src, depend = [''], CPPPATH = path)
 
 Return('group')

@@ -11,8 +11,7 @@
 #ifndef __DRV_SOFT_SPI__
 #define __DRV_SOFT_SPI__
 
-#include <rthw.h>
-#include <rtdevice.h>
+#include "drv_config.h"
 #include <dev_spi_bit_ops.h>
 
 /* stm32 soft spi config */

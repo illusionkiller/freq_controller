@@ -7,15 +7,9 @@
  * Date           Author       Notes
  * 2018-11-27     zylx         first version
  */
-
-#include <board.h>
-#include <drv_qspi.h>
-#include <rtdevice.h>
-#include <rthw.h>
-#include <finsh.h>
+#include "drv_qspi.h"
 
 #ifdef BSP_USING_QSPI_FLASH
-
 #include "dev_spi_flash.h"
 #include "dev_spi_flash_sfud.h"
 
@@ -55,7 +49,7 @@ void w25qxx_enter_qspi_mode(struct rt_qspi_device *device)
         write_status2_buf[1] = status;
         rt_qspi_send(device, &write_status2_buf, 2);
         rt_qspi_send(device, &instruction, 1);
-        rt_kprintf("flash already enter qspi mode\n");
+        LOG_D("flash already enter qspi mode");
         rt_thread_mdelay(10);
     }
 }
@@ -65,7 +59,7 @@ static int rt_hw_qspi_flash_with_sfud_init(void)
     rt_hw_qspi_device_attach("qspi1", "qspi10", RT_NULL, 4, w25qxx_enter_qspi_mode, RT_NULL);
 
     /* init W25Q256 */
-    if (RT_NULL == rt_sfud_flash_probe("W25Q128", "qspi10"))
+    if (RT_NULL == rt_sfud_flash_probe(FAL_USING_NOR_FLASH_DEV_NAME, "qspi10"))
     {
         return -RT_ERROR;
     }

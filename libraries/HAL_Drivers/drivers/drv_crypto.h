@@ -10,7 +10,7 @@
 
 #ifndef __DRV_CRYPTO_H__
 #define __DRV_CRYPTO_H__
-
+#include "drv_config.h"
 int l4_hw_crypto_device_init(void);
 
 #endif /* __DRV_CRYPTO_H__ */

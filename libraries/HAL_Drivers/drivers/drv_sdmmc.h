@@ -13,11 +13,7 @@
 #ifndef __DRV_SDMMC_H__
 #define __DRV_SDMMC_H__
 
-#include <rtthread.h>
-#include "rtdevice.h"
-#include <rthw.h>
-#include <drv_common.h>
-#include <string.h>
+#include <drv_config.h>
 #include <drivers/dev_mmcsd_core.h>
 #include <drivers/dev_sdio.h>
 

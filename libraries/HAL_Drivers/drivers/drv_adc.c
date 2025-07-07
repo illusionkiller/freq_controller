@@ -14,9 +14,6 @@
  * 2022-12-26     wdfk-prog    Change the order of configuration channels and calibration functions
  */
 
-#include <board.h>
-#include <rtthread.h>
-
 #if defined(BSP_USING_ADC1) || defined(BSP_USING_ADC2) || defined(BSP_USING_ADC3)
 #include "drv_config.h"
 

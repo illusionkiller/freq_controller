@@ -9,9 +9,6 @@
  * 2020-10-09     thread-liu   Porting for stm32h7xx
  */
 
-#include <board.h>
-#include <rtthread.h>
-
 #if defined(BSP_USING_DAC1) || defined(BSP_USING_DAC2)
 #include "drv_config.h"
 

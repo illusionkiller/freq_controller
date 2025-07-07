@@ -13,10 +13,7 @@
 #ifndef __DRV_USART_H__
 #define __DRV_USART_H__
 
-#include <rtthread.h>
-#include "rtdevice.h"
-#include <rthw.h>
-#include <drv_common.h>
+
 #include "drv_dma.h"
 
 int rt_hw_usart_init(void);

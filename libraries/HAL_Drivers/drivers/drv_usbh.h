@@ -10,7 +10,7 @@
  */
 #ifndef __DRV_USBH_H__
 #define __DRV_USBH_H__
-#include <rtthread.h>
+#include "drv_config.h"
 
 #define OTG_FS_PORT 1
 

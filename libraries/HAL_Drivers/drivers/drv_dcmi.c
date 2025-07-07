@@ -8,7 +8,6 @@
  * 2020-07-27     thread-liu        the first version
  */
 
-#include "board.h"
 
 #if defined(BSP_USING_DCMI)
 
