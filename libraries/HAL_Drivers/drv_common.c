@@ -175,16 +175,6 @@ void rt_hw_us_delay(rt_uint32_t us)
  */
 rt_weak void rt_hw_board_init(void)
 {
-#ifdef BSP_SCB_ENABLE_I_CACHE
-    /* Enable I-Cache---------------------------------------------------------*/
-    SCB_EnableICache();
-#endif
-
-#ifdef BSP_SCB_ENABLE_D_CACHE
-    /* Enable D-Cache---------------------------------------------------------*/
-    SCB_EnableDCache();
-#endif
-
     /* HAL_Init() function is called at the beginning of the program */
     HAL_Init();
 

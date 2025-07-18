@@ -7,7 +7,7 @@
  * Date           Author       Notes
  * 2019-01-08     zylx         first version
  */
-
+#include "drv_config.h"
 
 #ifdef BSP_USING_LCD
 #include <lcd_port.h>

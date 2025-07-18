@@ -284,7 +284,7 @@
 //#define MEMP_USE_CUSTOM_POOLS       1
 //#define MEM_SIZE                    (1024*64)
 
-#define MEMP_MEM_MALLOC             0
+#define MEMP_MEM_MALLOC             1
 
 /* MEMP_NUM_PBUF: the number of memp struct pbufs. If the application
    sends a lot of data out of ROM (or other static memory), this
@@ -383,7 +383,7 @@
 
 /* TCP sender buffer space (pbufs). This must be at least = 2 *
    TCP_SND_BUF/TCP_MSS for things to work. */
-#define TCP_SND_QUEUELEN            (4 * TCP_SND_BUF/TCP_MSS)
+#define TCP_SND_QUEUELEN            (8 * TCP_SND_BUF/TCP_MSS)
 
 /* TCP writable space (bytes). This must be less than or equal
    to TCP_SND_BUF. It is the amount of space which must be

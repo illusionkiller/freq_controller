@@ -16,27 +16,26 @@
 #include <drv_log.h>
 
 #if defined(BSP_USING_QSPI)
-
 struct stm32_qspi_bus
 {
     QSPI_HandleTypeDef QSPI_Handler;
     char *bus_name;
+    struct rt_completion cmd_cplt;
 #ifdef BSP_QSPI_USING_DMA
     MDMA_HandleTypeDef hmdma_quadspi_fifo_th;
+    struct rt_completion rx_cplt;
+    struct rt_completion tx_cplt;
 #endif
 };
 
 struct rt_spi_bus _qspi_bus1;
 struct stm32_qspi_bus _stm32_qspi_bus;
 
-static int stm32_qspi_init(struct rt_qspi_device *device, struct rt_qspi_configuration *qspi_cfg)
+static rt_err_t stm32_qspi_init(struct rt_qspi_device *device, struct rt_qspi_configuration *qspi_cfg)
 {
-    int result = RT_EOK;
-    unsigned int i = 1;
-
+    unsigned int i = 0;
     RT_ASSERT(device != RT_NULL);
     RT_ASSERT(qspi_cfg != RT_NULL);
-
     struct rt_spi_configuration *cfg = &qspi_cfg->parent;
     struct stm32_qspi_bus *qspi_bus = device->parent.bus->parent.user_data;
     rt_memset(&qspi_bus->QSPI_Handler, 0, sizeof(qspi_bus->QSPI_Handler));
@@ -44,22 +43,20 @@ static int stm32_qspi_init(struct rt_qspi_device *device, struct rt_qspi_configu
     QSPI_HandleTypeDef QSPI_Handler_config = QSPI_BUS_CONFIG;
     qspi_bus->QSPI_Handler = QSPI_Handler_config;
 
-#if defined(SOC_SERIES_STM32MP1)
-    while (cfg->max_hz < HAL_RCC_GetACLKFreq() / (i + 1))
-#else
-    while (cfg->max_hz < HAL_RCC_GetHCLKFreq() / (i + 1))
-#endif
-   {
-        i++;
-        if (i == 255)
+    rt_uint32_t hclk_freq = HAL_RCC_GetHCLKFreq();
+    for (i = 1; i < 255; i++)
+    {
+        if (cfg->max_hz > hclk_freq / i)
         {
-            LOG_E("QSPI init failed, QSPI frequency(%d) is too low.", cfg->max_hz);
-            return -RT_ERROR;
+            break;
         }
     }
-    /* 80/(1+i) */
+    if (i == 255)
+    {
+        LOG_E("qspi init failed,config max_hz(%d) is too low.", cfg->max_hz);
+        return -RT_ERROR;
+    }
     qspi_bus->QSPI_Handler.Init.ClockPrescaler = i;
-
     if (!(cfg->mode & RT_SPI_CPOL))
     {
         /* QSPI MODE0 */
@@ -73,24 +70,20 @@ static int stm32_qspi_init(struct rt_qspi_device *device, struct rt_qspi_configu
 
     /* flash size */
     qspi_bus->QSPI_Handler.Init.FlashSize = POSITION_VAL(qspi_cfg->medium_size) - 1;
-
-    result = HAL_QSPI_Init(&qspi_bus->QSPI_Handler);
-    if (result  == HAL_OK)
+    rt_completion_init(&qspi_bus->cmd_cplt);
+    if (HAL_QSPI_Init(&qspi_bus->QSPI_Handler) != HAL_OK)
     {
-        LOG_D("qspi init success!");
+        LOG_E("qspi init failed (%d)!", qspi_bus->QSPI_Handler.ErrorCode);
+        return -RT_ERROR;
     }
-    else
-    {
-        LOG_E("qspi init failed (%d)!", result);
-    }
-
+    LOG_D("qspi init success,hclk freq: %d, SPI limiting freq: %d, SPI usage freq: %d", hclk_freq, cfg->max_hz, hclk_freq / (i + 1));
 #ifdef BSP_QSPI_USING_DMA
     __HAL_RCC_MDMA_CLK_ENABLE();
-    
+    rt_completion_init(&qspi_bus->tx_cplt);
+    rt_completion_init(&qspi_bus->rx_cplt);
     /* QSPI interrupts must be enabled when using the HAL_QSPI_Receive_DMA */
     HAL_NVIC_SetPriority(QSPI_DMA_IRQ, 0, 0);
     HAL_NVIC_EnableIRQ(QSPI_DMA_IRQ);
-
     HAL_MDMA_DeInit(&qspi_bus->hmdma_quadspi_fifo_th);
 
     MDMA_HandleTypeDef hdma_quadspi_config = QSPI_DMA_CONFIG;
@@ -98,24 +91,20 @@ static int stm32_qspi_init(struct rt_qspi_device *device, struct rt_qspi_configu
 
     if (HAL_MDMA_Init(&qspi_bus->hmdma_quadspi_fifo_th) != HAL_OK)
     {
-        LOG_E("qspi dma init failed (%d)!", result);
+        LOG_E("qspi dma init failed (%d)!", qspi_bus->QSPI_Handler.ErrorCode);
+        return -RT_ERROR;
     }
-
-    if (HAL_MDMA_ConfigPostRequestMask(&qspi_bus->hmdma_quadspi_fifo_th, 0, 0) != HAL_OK)
-    {
-        LOG_E("qspi dma init failed (%d)!", result);
-    }
+    HAL_MDMA_ConfigPostRequestMask(&qspi_bus->hmdma_quadspi_fifo_th, 0, 0);
     __HAL_LINKDMA(&qspi_bus->QSPI_Handler, hmdma, qspi_bus->hmdma_quadspi_fifo_th);
-
 #endif /* BSP_QSPI_USING_DMA */
-    return result;
+    return RT_EOK;
 }
 
 static HAL_StatusTypeDef qspi_send_cmd(struct stm32_qspi_bus *qspi_bus, struct rt_qspi_message *message)
 {
     RT_ASSERT(qspi_bus != RT_NULL);
     RT_ASSERT(message != RT_NULL);
-
+    HAL_StatusTypeDef ret = HAL_OK;
     QSPI_CommandTypeDef Cmdhandler;
 
     /* set QSPI cmd struct */
@@ -184,7 +173,24 @@ static HAL_StatusTypeDef qspi_send_cmd(struct stm32_qspi_bus *qspi_bus, struct r
     Cmdhandler.DdrMode = QSPI_DDR_MODE_DISABLE;
     Cmdhandler.DdrHoldHalfCycle = QSPI_DDR_HHC_ANALOG_DELAY;
     Cmdhandler.NbData = message->parent.length;
-    return HAL_QSPI_Command(&qspi_bus->QSPI_Handler, &Cmdhandler, 5000);
+// #ifdef BSP_QSPI_USING_DMA
+    // ret = HAL_QSPI_Command_IT(&qspi_bus->QSPI_Handler, &Cmdhandler);
+    // if(ret == HAL_OK)
+    // {
+    //     // 等待命令发送完成信号
+    //     if (rt_completion_wait(&qspi_bus->cmd_cplt, HAL_QPSI_TIMEOUT_DEFAULT_VALUE) == RT_EOK)
+    //     {
+    //         ret = HAL_OK;
+    //     }
+    //     else
+    //     {
+    //         ret = HAL_TIMEOUT;
+    //     }
+    // }
+// #else
+    ret = HAL_QSPI_Command(&qspi_bus->QSPI_Handler, &Cmdhandler, HAL_QPSI_TIMEOUT_DEFAULT_VALUE);
+// #endif
+    return ret;
 }
 
 static rt_ssize_t qspixfer(struct rt_spi_device *device, struct rt_spi_message *message)
@@ -194,10 +200,8 @@ static rt_ssize_t qspixfer(struct rt_spi_device *device, struct rt_spi_message *
     RT_ASSERT(device != RT_NULL);
     RT_ASSERT(device->bus != RT_NULL);
 
-    struct rt_qspi_message *qspi_message = (struct rt_qspi_message *)message;
     struct stm32_qspi_bus *qspi_bus = device->bus->parent.user_data;
-
-    const rt_uint8_t *sndb = message->send_buf;
+    rt_uint8_t *sndb = (rt_uint8_t *)message->send_buf;
     rt_uint8_t *rcvb = message->recv_buf;
     rt_int32_t length = message->length;
 
@@ -211,62 +215,98 @@ static rt_ssize_t qspixfer(struct rt_spi_device *device, struct rt_spi_message *
     /* send data */
     if (sndb)
     {
-        if (qspi_send_cmd(qspi_bus, qspi_message) != HAL_OK)
+        if (qspi_send_cmd(qspi_bus, (struct rt_qspi_message *)message) != HAL_OK)
         {
             LOG_E("QSPI send cmd failed(%d)!", qspi_bus->QSPI_Handler.ErrorCode);
-            qspi_bus->QSPI_Handler.State = HAL_QSPI_STATE_READY;
             result = -RT_ERROR;
             goto __exit;
         }
-        if (qspi_message->parent.length != 0)
+        if (length != 0)
         {
-            if (HAL_QSPI_Transmit(&qspi_bus->QSPI_Handler, (rt_uint8_t *)sndb, 5000) == HAL_OK)
+#ifdef BSP_QSPI_USING_DMA
+            rt_hw_cpu_dcache_ops(RT_HW_CACHE_FLUSH, sndb, length);
+            rt_completion_wait(&qspi_bus->tx_cplt, 0);
+            if (HAL_QSPI_Transmit_DMA(&qspi_bus->QSPI_Handler, sndb) == HAL_OK)
+            {
+                if (rt_completion_wait(&qspi_bus->tx_cplt, HAL_QPSI_TIMEOUT_DEFAULT_VALUE) == RT_EOK)
+                {
+                    result = length;
+                }
+                else
+                {
+                    LOG_E("QSPI dma send data failed(%d)!", qspi_bus->QSPI_Handler.ErrorCode);
+                    result = -RT_ETIMEOUT;
+                    goto __exit;
+                }
+            }
+            else
+            {
+                LOG_E("QSPI dma send data failed(%d)!", qspi_bus->QSPI_Handler.ErrorCode);
+                result = -RT_ERROR;
+                goto __exit;
+            }
+#else
+            if (HAL_QSPI_Transmit(&qspi_bus->QSPI_Handler, (uint8_t *)sndb, HAL_QPSI_TIMEOUT_DEFAULT_VALUE) != HAL_OK)
+            {
+                LOG_E("QSPI send data failed(%d)!", qspi_bus->QSPI_Handler.ErrorCode);
+                result = -RT_ETIMEOUT;
+                goto __exit;
+            }
+            else
+            {
+                result = length;
+            }
+#endif
+        }
+        else
+            result = 1;
+    }
+    else if (rcvb)/* recv data */
+    {
+        if (qspi_send_cmd(qspi_bus, (struct rt_qspi_message *)message) != HAL_OK)
+        {
+            LOG_E("QSPI send cmd failed(%d)!", qspi_bus->QSPI_Handler.ErrorCode);
+            result = -RT_ERROR;
+            goto __exit;
+        }
+#ifdef BSP_QSPI_USING_DMA
+        rt_hw_cpu_dcache_ops(RT_HW_CACHE_INVALIDATE | RT_HW_CACHE_FLUSH, rcvb, length);
+        rt_completion_wait(&qspi_bus->rx_cplt, 0);
+        if (HAL_QSPI_Receive_DMA(&qspi_bus->QSPI_Handler, rcvb) == HAL_OK)
+        {
+            if (rt_completion_wait(&qspi_bus->rx_cplt, HAL_QPSI_TIMEOUT_DEFAULT_VALUE) == RT_EOK)
             {
                 result = length;
             }
             else
             {
-                LOG_E("QSPI send data failed(%d)!", qspi_bus->QSPI_Handler.ErrorCode);
-                qspi_bus->QSPI_Handler.State = HAL_QSPI_STATE_READY;
-                result = -RT_ERROR;
+                LOG_E("QSPI dma recv data failed(%d)!", qspi_bus->QSPI_Handler.ErrorCode);
+                result = -RT_ETIMEOUT;
                 goto __exit;
             }
         }
         else
         {
-            result = 1;
-        }
-    }
-    else if (rcvb)/* recv data */
-    {
-        if (qspi_send_cmd(qspi_bus, qspi_message) != HAL_OK)
-        {
-            LOG_E("QSPI send cmd failed(%d)!", qspi_bus->QSPI_Handler.ErrorCode);
-            qspi_bus->QSPI_Handler.State = HAL_QSPI_STATE_READY;
+            LOG_E("QSPI dma recv data failed(%d)!", qspi_bus->QSPI_Handler.ErrorCode);
             result = -RT_ERROR;
             goto __exit;
         }
-#ifdef BSP_QSPI_USING_DMA
-        if (HAL_QSPI_Receive_DMA(&qspi_bus->QSPI_Handler, rcvb) == HAL_OK)
 #else
-        if (HAL_QSPI_Receive(&qspi_bus->QSPI_Handler, rcvb, 5000) == HAL_OK)
-#endif
+        if (HAL_QSPI_Receive(&qspi_bus->QSPI_Handler, rcvb, HAL_QPSI_TIMEOUT_DEFAULT_VALUE) == HAL_OK)
         {
             result = length;
-#ifdef BSP_QSPI_USING_DMA
-            while (qspi_bus->QSPI_Handler.RxXferCount != 0);
-#endif
         }
         else
         {
             LOG_E("QSPI recv data failed(%d)!", qspi_bus->QSPI_Handler.ErrorCode);
-            qspi_bus->QSPI_Handler.State = HAL_QSPI_STATE_READY;
             result = -RT_ERROR;
             goto __exit;
         }
+#endif
     }
 
 __exit:
+    qspi_bus->QSPI_Handler.State = HAL_QSPI_STATE_READY;
 #ifdef BSP_QSPI_USING_SOFTCS
     if (message->cs_release && (device->cs_pin != PIN_NONE))
     {
@@ -319,7 +359,7 @@ rt_err_t rt_hw_qspi_device_attach(const char *bus_name, const char *device_name,
     RT_ASSERT(device_name != RT_NULL);
     RT_ASSERT(data_line_width == 1 || data_line_width == 2 || data_line_width == 4);
 
-    qspi_device = (struct rt_qspi_device *)rt_malloc(sizeof(struct rt_qspi_device));
+    qspi_device = (struct rt_qspi_device *)rt_calloc(1,sizeof(struct rt_qspi_device));
     if (qspi_device == RT_NULL)
     {
         LOG_E("no memory, qspi bus attach device failed!");
@@ -349,7 +389,6 @@ __exit:
     return  result;
 }
 
-#ifdef BSP_QSPI_USING_DMA
 void QSPI_IRQHandler(void)
 {
     /* enter interrupt */
@@ -360,6 +399,16 @@ void QSPI_IRQHandler(void)
     /* leave interrupt */
     rt_interrupt_leave();
 }
+
+/*
+
+*/
+void HAL_QSPI_CmdCpltCallback(QSPI_HandleTypeDef *hqspi)
+{
+    rt_completion_done(&_stm32_qspi_bus.cmd_cplt);
+}
+
+#ifdef BSP_QSPI_USING_DMA
 
 /**
  * @brief This function handles MDMA global interrupt.
@@ -374,6 +423,23 @@ void QSPI_DMA_IRQHandler(void)
     /* leave interrupt */
     rt_interrupt_leave();
 }
+
+/*
+
+*/
+void HAL_QSPI_RxCpltCallback(QSPI_HandleTypeDef *hqspi)
+{
+    rt_completion_done(&_stm32_qspi_bus.rx_cplt);
+}
+
+/*
+
+*/
+void HAL_QSPI_TxCpltCallback(QSPI_HandleTypeDef *hqspi)
+{
+    rt_completion_done(&_stm32_qspi_bus.tx_cplt);
+}
+
 #endif
 static int rt_hw_qspi_bus_init(void)
 {

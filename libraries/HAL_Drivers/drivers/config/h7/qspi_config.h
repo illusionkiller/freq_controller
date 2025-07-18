@@ -45,7 +45,7 @@ extern "C" {
         .Init.SourceDataSize = MDMA_SRC_DATASIZE_BYTE,      \
         .Init.DestDataSize = MDMA_DEST_DATASIZE_BYTE,       \
         .Init.DataAlignment = MDMA_DATAALIGN_PACKENABLE,    \
-        .Init.BufferTransferLength = 1,                     \
+        .Init.BufferTransferLength = 128,                     \
         .Init.SourceBurst = MDMA_SOURCE_BURST_SINGLE,       \
         .Init.DestBurst = MDMA_DEST_BURST_SINGLE,           \
         .Init.SourceBlockAddressOffset = 0,                 \

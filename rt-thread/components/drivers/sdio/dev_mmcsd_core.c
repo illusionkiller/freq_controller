@@ -701,7 +701,7 @@ void mmcsd_detect(void *param)
 void mmcsd_host_init(struct rt_mmcsd_host *host)
 {
     rt_memset(host, 0, sizeof(struct rt_mmcsd_host));
-    strncpy(host->name, "sd", sizeof(host->name) - 1);
+    rt_strncpy(host->name, "sd", sizeof(host->name) - 1);
     host->max_seg_size = 65535;
     host->max_dma_segs = 1;
     host->max_blk_size = 512;

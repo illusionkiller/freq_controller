@@ -486,6 +486,7 @@ static void uart_isr(struct rt_serial_device *serial)
     else if ((uart->uart_dma_flag) && (__HAL_UART_GET_FLAG(&(uart->handle), UART_FLAG_IDLE) != RESET)
              && (__HAL_UART_GET_IT_SOURCE(&(uart->handle), UART_IT_IDLE) != RESET))
     {
+
         dma_recv_isr(serial, UART_RX_DMA_IT_IDLE_FLAG);
         __HAL_UART_CLEAR_IDLEFLAG(&uart->handle);
     }
@@ -496,6 +497,7 @@ static void uart_isr(struct rt_serial_device *serial)
         {
             LOG_E("(%s) serial device Overrun error!", serial->parent.parent.name);
             __HAL_UART_CLEAR_OREFLAG(&uart->handle);
+            uint8_t ch = UART_GET_RDR(&uart->handle, stm32_uart_get_mask(uart->handle.Init.WordLength, uart->handle.Init.Parity));
         }
         if (__HAL_UART_GET_FLAG(&(uart->handle), UART_FLAG_NE) != RESET)
         {
@@ -1073,13 +1075,13 @@ static void stm32_uart_get_config(void)
     uart_obj[UART8_INDEX].serial.config.tx_bufsz = BSP_UART8_TX_BUFSIZE;
 
 #ifdef BSP_UART8_RX_USING_DMA
+    uart_obj[UART8_INDEX].serial.config.dma_ping_bufsz = BSP_UART8_DMA_PING_BUFSIZE;
     uart_obj[UART8_INDEX].uart_dma_flag |= RT_DEVICE_FLAG_DMA_RX;
     static struct dma_config uart8_dma_rx = UART8_DMA_RX_CONFIG;
     uart_config[UART8_INDEX].dma_rx = &uart8_dma_rx;
 #endif
 
 #ifdef BSP_UART8_TX_USING_DMA
-    uart_obj[UART8_INDEX].serial.config.dma_ping_bufsz = BSP_UART8_DMA_PING_BUFSIZE;
     uart_obj[UART8_INDEX].uart_dma_flag |= RT_DEVICE_FLAG_DMA_TX;
     static struct dma_config uart8_dma_tx = UART8_DMA_TX_CONFIG;
     uart_config[UART8_INDEX].dma_tx = &uart8_dma_tx;
@@ -1253,10 +1255,10 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
   */
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
-    struct stm32_uart *uart;
+    // struct stm32_uart *uart;
     RT_ASSERT(huart != NULL);
-    uart = (struct stm32_uart *)huart;
-    dma_recv_isr(&uart->serial, UART_RX_DMA_IT_TC_FLAG);
+    // uart = (struct stm32_uart *)huart;
+    // dma_recv_isr(&uart->serial, UART_RX_DMA_IT_TC_FLAG);
 }
 
 /**
@@ -1268,10 +1270,10 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
   */
 void HAL_UART_RxHalfCpltCallback(UART_HandleTypeDef *huart)
 {
-    struct stm32_uart *uart;
+    // struct stm32_uart *uart;
     RT_ASSERT(huart != NULL);
-    uart = (struct stm32_uart *)huart;
-    dma_recv_isr(&uart->serial, UART_RX_DMA_IT_HT_FLAG);
+    // uart = (struct stm32_uart *)huart;
+    // dma_recv_isr(&uart->serial, UART_RX_DMA_IT_HT_FLAG);
 }
 
 /**

@@ -6,10 +6,11 @@
 /* Program Entry, set to mark it as "used" and avoid gc */
 MEMORY
 {
-    ROM (rx) : ORIGIN = 0x08000000, LENGTH = 2048k /* 2048KB flash */
-    RAM1 (rw) : ORIGIN = 0x20000000, LENGTH =  128k /* 128K sram */
-    RAM (rw) : ORIGIN = 0x24000000, LENGTH =  512k /* 512K sram */
-    RAM_D2_SRAM3 (xrw) : ORIGIN = 0x30040000, LENGTH = 32K    /* 增加MEMORY */
+    ROM (rx) : ORIGIN = 0x08000000, LENGTH = 2048k 
+    DTCMRAM (xrw) : ORIGIN = 0x20000000, LENGTH =  128k 
+    RAM (xrw) : ORIGIN = 0x24000000, LENGTH =  512k 
+    RAM_D2 (xrw) : ORIGIN = 0x30040000, LENGTH = 32K
+    RAM_D3 (xrw)      : ORIGIN = 0x38000000, LENGTH = 64K
 }
 ENTRY(Reset_Handler)
 _system_stack_size = 0x800;
@@ -68,7 +69,7 @@ SECTIONS
 
         /* This is used by the startup in order to initialize the .data secion */
         _sidata = .;
-    } > ROM
+    } >ROM
     __exidx_end = .;
 
     /* .data section which is used for initialized data */
@@ -91,7 +92,7 @@ SECTIONS
         . = ALIGN(4);
         /* This is used by the startup in order to initialize the .data secion */
         _edata = . ;
-    } >RAM
+    } >DTCMRAM
 
     .stack :
     {
@@ -100,7 +101,7 @@ SECTIONS
         . = . + _system_stack_size;
         . = ALIGN(4);
         _estack = .;
-    } >RAM
+    } >DTCMRAM
 
     __bss_start = .;
     .bss :
@@ -118,11 +119,10 @@ SECTIONS
         _ebss = . ;
 
         *(.bss.init)
-    } > RAM
+    } >DTCMRAM
     __bss_end = .;
     _end = .;
-    
-    /* 增加连接脚本 */
+
     .lwip_sec (NOLOAD) : 
     {
         . = ALIGN(4);
@@ -130,7 +130,8 @@ SECTIONS
         *(.TxDecripSection)
         *(.RxArraySection) 
         . = ALIGN(4);
-    } > RAM_D2_SRAM3
+    } >RAM_D2
+    
 
     /* Stabs debugging sections.  */
     .stab          0 : { *(.stab) }

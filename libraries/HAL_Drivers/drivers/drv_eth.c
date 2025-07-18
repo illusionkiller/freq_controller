@@ -87,6 +87,7 @@ static void phy_reset(void)
     rt_pin_write(reset_pin, PIN_LOW);
     rt_thread_mdelay(50);
     rt_pin_write(reset_pin, PIN_HIGH);
+    rt_thread_mdelay(1000);
 }
 
 
@@ -109,8 +110,7 @@ static rt_err_t rt_stm32_eth_init(rt_device_t dev)
     EthHandle.Init.RxDesc = DMARxDscrTab;
     EthHandle.Init.RxBuffLen = ETH_MAX_PACKET_SIZE;
 
-    // SCB_CleanInvalidateDCache();
-    rt_hw_cpu_dcache_ops(RT_HW_CACHE_FLUSH | RT_HW_CACHE_INVALIDATE, (void *)Rx_Buff, ETH_MAX_PACKET_SIZE);
+    // rt_hw_cpu_dcache_ops(RT_HW_CACHE_FLUSH | RT_HW_CACHE_INVALIDATE, (void *)Rx_Buff, ETH_MAX_PACKET_SIZE);
 
     HAL_ETH_DeInit(&EthHandle);
 
@@ -177,9 +177,7 @@ static rt_err_t rt_stm32_eth_init(rt_device_t dev)
     //         }
     //     }
     // }
-
-    rt_thread_delay(2000);
-
+    // rt_thread_delay(2000);
     if(HAL_ETH_ReadPHYRegister(&EthHandle, PHY_ADDR, PHY_BASIC_CONTROL_REG, &regvalue) == HAL_OK)
     {
         regvalue |= PHY_AUTO_NEGOTIATION_MASK;
@@ -333,7 +331,7 @@ struct pbuf *rt_stm32_eth_rx(rt_device_t dev)
 
             /* Invalidate data cache for ETH Rx Buffers */
             alignedAddr = (uint32_t)RxBuff.buffer & ~0x1F;
-            rt_hw_cpu_dcache_ops(RT_HW_CACHE_FLUSH | RT_HW_CACHE_INVALIDATE, (uint32_t *)alignedAddr, (uint32_t)RxBuff.buffer - alignedAddr + framelength);
+            rt_hw_cpu_dcache_ops(RT_HW_CACHE_INVALIDATE, (uint32_t *)alignedAddr, (uint32_t)RxBuff.buffer - alignedAddr + framelength);
             p = pbuf_alloc(PBUF_RAW, framelength, PBUF_RAM);
 #ifdef ETH_RX_DUMP
             LOG_HEX("eth_rx_dump:",32,RxBuff.buffer, framelength);
@@ -423,23 +421,23 @@ static void phy_linkchange()
 
             if (phy_speed & PHY_100M)
             {
-                LOG_D("100Mbps");
+                LOG_I("100Mbps");
                 stm32_eth_device.ETH_Speed = ETH_SPEED_100M;
             }
             else
             {
                 stm32_eth_device.ETH_Speed = ETH_SPEED_10M;
-                LOG_D("10Mbps");
+                LOG_I("10Mbps");
             }
 
             if (phy_speed & PHY_FULL_DUPLEX)
             {
-                LOG_D("full-duplex");
+                LOG_I("full-duplex");
                 stm32_eth_device.ETH_Mode = ETH_FULLDUPLEX_MODE;
             }
             else
             {
-                LOG_D("half-duplex");
+                LOG_I("half-duplex");
                 stm32_eth_device.ETH_Mode = ETH_HALFDUPLEX_MODE;
             }
 

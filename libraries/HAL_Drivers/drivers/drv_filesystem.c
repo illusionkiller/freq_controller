@@ -12,7 +12,6 @@
 
 #include "drv_config.h"
 #include <dfs_romfs.h>
-#include <dfs_fs.h>
 #include <dfs_file.h>
 
 #if DFS_FILESYSTEMS_MAX < 4
@@ -29,6 +28,7 @@
 #ifdef BSP_USING_SDCARD_FATFS
 static int onboard_sdcard_mount(void)
 {
+    rt_thread_mdelay(RT_TICK_PER_SECOND);
     if (dfs_mount("sd0", "/sdcard", "elm", 0, 0) == RT_EOK)
     {
         LOG_I("SD card mount to '/sdcard'");
@@ -101,12 +101,13 @@ static int filesystem_mount(void)
     {
         LOG_E("rom mount to '/' failed!");
     }
-#ifdef BSP_USING_SDCARD_FATFS
-    onboard_sdcard_mount();
-#endif
 
 #ifdef BSP_USING_SPI_FLASH_LITTLEFS
     onboard_spiflash_mount();
+#endif
+
+#ifdef BSP_USING_SDCARD_FATFS
+    onboard_sdcard_mount();
 #endif
 
     return RT_EOK;
