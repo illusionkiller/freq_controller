@@ -16,7 +16,7 @@
 #include "modbus_tcp.h"
 #include "netdev.h"
 #include "pcf8575.h"
-#include <flashdb.h>
+#include "flashdb.h"
 
 #define DBG_TAG "DTU"
 #define DBG_LVL DBG_INFO
@@ -48,10 +48,10 @@ typedef union
 {
     struct
     {
-        uint16_t PLL_INPUT_SEL : 1; // 锁相源参考输入信号选择
+        uint16_t PLL_INPUT_SEL : 2; // 锁相源参考输入信号选择0:使用内部参考 1:使用外部参考10M 2:使用外部参考100M
         uint16_t CH1_OUTPUT_EN : 1; // 通道1输出频率开关 0:关闭 1:打开
-        uint16_t CH2_OUTPUT_EN : 1; // 通道2输出频率开关 0:关闭 1:打开
         uint16_t CH1_MIDF_SW : 3; // 
+        uint16_t CH2_OUTPUT_EN : 1; // 通道2输出频率开关 0:关闭 1:打开
         uint16_t CH2_MIDF_SW : 3; //
     };
     uint16_t val;
@@ -113,11 +113,11 @@ static device_reg_t device_reg = {
     .LW1016 = 0,
 };
 
-static rtu_modbus_device_t rtu1 = {0};
-static rtu_modbus_device_t rtu2 = {0};
-static rtu_modbus_device_t rtu3 = {0};
-static rtu_modbus_device_t rtu4 = {0};
-static tcp_modbus_device_t tsu = {0};
+static rtu_modbus_device_t rtu1 = RT_NULL;
+static rtu_modbus_device_t rtu2 = RT_NULL;
+static rtu_modbus_device_t rtu3 = RT_NULL;
+static rtu_modbus_device_t rtu4 = RT_NULL;
+static tcp_modbus_device_t tsu = RT_NULL;
 
 static struct fdb_kvdb kvdb = {0};
 static struct rt_mutex lock;
@@ -437,17 +437,17 @@ rt_err_t mb_fun_write_registers(uint16_t addr, unsigned char reg_count, uint16_t
         case 18:
             device_reg.ch1_input_fre = (reg_buffer[addr_index] << 16) | reg_buffer[addr_index + 1];
             addr_index += 2;
-            fdb_kv_set_blob(&kvdb, "DEVICE_REG", fdb_blob_make(&blob, &device_reg, sizeof(device_reg)));
+            // fdb_kv_set_blob(&kvdb, "DEVICE_REG", fdb_blob_make(&blob, &device_reg, sizeof(device_reg)));
             break;
         case 20:
             device_reg.ch2_input_fre = (reg_buffer[addr_index] << 16) | reg_buffer[addr_index + 1];
             addr_index += 2;
-            fdb_kv_set_blob(&kvdb, "DEVICE_REG", fdb_blob_make(&blob, &device_reg, sizeof(device_reg)));
+            // fdb_kv_set_blob(&kvdb, "DEVICE_REG", fdb_blob_make(&blob, &device_reg, sizeof(device_reg)));
             break;
         case 22:
             device_reg.LW1016 = reg_buffer[addr_index];
             addr_index += 1;
-            fdb_kv_set_blob(&kvdb, "DEVICE_REG", fdb_blob_make(&blob, &device_reg, sizeof(device_reg)));
+            // fdb_kv_set_blob(&kvdb, "DEVICE_REG", fdb_blob_make(&blob, &device_reg, sizeof(device_reg)));
             break;
         default:
             addr_index++;
@@ -601,36 +601,38 @@ static void load_kvdb_para(void)
 }
 static int env_kvdb_init(void)
 {
-#define file_path "/spiflash/fdb_kvdb1"
+    rt_thread_delay(RT_TICK_PER_SECOND);
+// #define dir_path "/spiflash/fdb_kvdb/"
+#define dir_path "spiflash1"
     fdb_err_t result;
     bool file_mode = true;
+    bool not_formatable = true;
     uint32_t sec_size = 4096;
-    uint32_t db_size = sec_size * 16;
+    uint32_t db_size = sec_size * 4;
     struct fdb_default_kv default_kv;
     default_kv.kvs = default_kv_table;
     default_kv.num = sizeof(default_kv_table) / sizeof(default_kv_table[0]);
 #ifdef FDB_KV_AUTO_UPDATE
     kvdb.ver_num = 2;
 #endif
-    rt_mutex_init(&lock, "kvdb", RT_IPC_FLAG_FIFO);
+    rt_mutex_init(&lock, "env", RT_IPC_FLAG_FIFO);
     fdb_kvdb_control(&kvdb, FDB_KVDB_CTRL_SET_LOCK, kvdb_lock);
     fdb_kvdb_control(&kvdb, FDB_KVDB_CTRL_SET_UNLOCK, kvdb_unlock);
     /* set the sector and database max size */
-    fdb_kvdb_control(&kvdb, FDB_KVDB_CTRL_SET_SEC_SIZE, &sec_size);
-    fdb_kvdb_control(&kvdb, FDB_KVDB_CTRL_SET_MAX_SIZE, &db_size);
+    // fdb_kvdb_control(&kvdb, FDB_KVDB_CTRL_SET_SEC_SIZE, &sec_size);
+    // fdb_kvdb_control(&kvdb, FDB_KVDB_CTRL_SET_MAX_SIZE, &db_size);
     /* enable file mode */
-    fdb_kvdb_control(&kvdb, FDB_KVDB_CTRL_SET_FILE_MODE, &file_mode);
-    mkdir(file_path, 0777);
-    result = fdb_kvdb_init(&kvdb, "env", file_path, &default_kv, NULL);
+    // fdb_kvdb_control(&kvdb, FDB_KVDB_CTRL_SET_FILE_MODE, &file_mode);
+    // fdb_kvdb_control(&kvdb, FDB_KVDB_CTRL_SET_NOT_FORMAT, &not_formatable);
+    // mkdir(dir_path, 0777);
+    result = fdb_kvdb_init(&kvdb, "env", dir_path, &default_kv, NULL);
     if (result != FDB_NO_ERR)
     {
         return -RT_ERROR;
     }
-    load_kvdb_para();
-    LOG_D("env fdb_kvdb_init success");
     return RT_EOK;
 }
-// INIT_FS_EXPORT(env_kvdb_init);
+
 
 static int env_print_regs(uint8_t argc, char **argv)
 {
@@ -679,34 +681,42 @@ static void dtu_thread_entry(void *parameter)
     uint16_t regs[5] = {0};
     reg1010_t *reg1010 = RT_NULL;
     reg1010 = (reg1010_t *)&device_reg.LW1010;
+    // load_kvdb_para();
     while (1)
     {
 #if defined DEVICE_FRE_CONTROL_RANGE_X
         //获取锁相源模块信息
-        int ret = modbus_rtu_excuse(rtu4, 0x01, AGILE_MODBUS_FC_READ_HOLDING_REGISTERS, 0x0000, 3, &regs);
-        if(ret == MODBUS_RT_EOK)
+        if(rtu4)
         {
-            reg1010->PLL_REF = regs[0] & 0x0003;
-            reg1010->PLL_LOCK = READ_BIT(regs[0], 3);
-            LOG_D("PLL temperature %.1f°", (float)regs[2]/10);
+            int ret = modbus_rtu_excuse(rtu4, 0x01, AGILE_MODBUS_FC_READ_HOLDING_REGISTERS, 0x0000, 3, &regs);
+            if (ret == MODBUS_RT_EOK)
+            {
+                reg1010->PLL_REF = regs[0] & 0x0003;
+                reg1010->PLL_LOCK = READ_BIT(regs[0], 3);
+                LOG_D("PLL temperature %.1f°", (float)regs[2] / 10);
+            }
+            else
+            {
+                LOG_E("get pll info error %d", ret);
+            }
         }
-        else
+        // 获取通道1本振1信息
+        if(rtu2)
         {
-            LOG_E("get pll info error %d",ret);
+            int ret = modbus_rtu_excuse(rtu2, 0x01, AGILE_MODBUS_FC_READ_HOLDING_REGISTERS, 0x0000, 5, &regs);
+            if (ret == MODBUS_RT_EOK)
+            {
+                reg1010->CH1_CLK1_LOCK = READ_BIT(regs[0], 1);
+                LOG_D("ch1 clk1 temperature %.1f°", (float)regs[2] / 10);
+                uint32_t fre = regs[3] << 16 | regs[4];
+                LOG_D("ch1 clk1 frequency %.3f MHz", (float)regs[3] / 1000);
+            }
+            else
+            {
+                LOG_E("get ch1 local osc1 info error %d", ret);
+            }
         }
-        //获取通道1本振1信息
-        ret = modbus_rtu_excuse(rtu2, 0x01, AGILE_MODBUS_FC_READ_HOLDING_REGISTERS, 0x0000, 5, &regs);
-        if(ret == MODBUS_RT_EOK)
-        {
-            reg1010->CH1_CLK1_LOCK = READ_BIT(regs[0], 1);
-            LOG_D("ch1 clk1 temperature %.1f°", (float)regs[2] / 10);
-            uint32_t fre = regs[3] << 16 | regs[4];
-            LOG_D("ch1 clk1 frequency %.3f MHz", (float)regs[3] / 1000);
-        }
-        else
-        {
-            LOG_E("get ch1 local osc1 info error %d",ret);
-        }
+
         // //获取通道1本振2信息
         // ret = modbus_rtu_excuse(rtu2, 0x02, AGILE_MODBUS_FC_READ_HOLDING_REGISTERS, 0x0000, 5, &regs);
         // if(ret == MODBUS_RT_EOK)
@@ -808,16 +818,22 @@ static void dtu_thread_entry(void *parameter)
 
 static int dtu_init(void)
 {
-    struct netdev *dev = netdev_get_by_name(NET_DEV_NAME); // lwip设置网络连接callback
-    if (dev)
-        netdev_set_status_callback(dev, netdev_status_callback);
-    rtu1 = modbus_rtu_slave_init(COM1_PORT_NAME);  // 屏幕
-    rtu2 = modbus_rtu_master_init(COM2_PORT_NAME); // 通道1  --本振 + 变频
-    // rtu3 = modbus_rtu_master_init(COM3_PORT_NAME); //通道2
-    rtu4 = modbus_rtu_master_init(COM4_PORT_NAME); // 通道3  -- 锁相源
-    rt_thread_t thread = rt_thread_create("dtu", dtu_thread_entry, RT_NULL, 4096, MODBUS_THREAD_PRIO + 1, 20);
-    if (thread != RT_NULL)
-        rt_thread_startup(thread);
+    LOG_I("test float data %.3f", 390.223);
+    env_kvdb_init();
+    // struct netdev *dev = netdev_get_by_name(NET_DEV_NAME); // lwip设置网络连接callback
+    // if (dev && netdev_is_link_up(dev))
+    // {
+    //     tsu = modbus_tcp_slave_for_udp_init(NULL, 502);
+    //     netdev_set_status_callback(dev, netdev_status_callback);
+    // }
+    // rtu1 = modbus_rtu_slave_init(COM2_PORT_NAME);  // 屏幕
+    // // rtu2 = modbus_rtu_master_init(COM2_PORT_NAME); // 通道1  --本振 + 变频
+    // // rtu3 = modbus_rtu_master_init(COM3_PORT_NAME); //通道2
+    // rtu4 = modbus_rtu_master_init(COM4_PORT_NAME); // 通道3  -- 锁相源
+    // rt_thread_t thread = rt_thread_create("dtu", dtu_thread_entry, RT_NULL, 4096, MODBUS_THREAD_PRIO + 1, 20);
+    // if (thread != RT_NULL)
+    //     rt_thread_startup(thread);
     return 0;
 }
-// INIT_APP_EXPORT(dtu_init);
+INIT_FS_EXPORT(dtu_init);
+

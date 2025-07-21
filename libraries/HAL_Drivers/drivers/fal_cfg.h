@@ -50,12 +50,13 @@ extern const struct fal_flash_dev stm32_onchip_flash_128k;
 /* partition table */
 #ifdef BSP_USING_QSPI_FLASH
 #ifdef BSP_USING_ON_CHIP_FLASH
-#define FAL_PART_TABLE                                                                            \
-    {                                                                                             \
-        {FAL_PART_MAGIC_WROD, "spiflash0", FAL_USING_NOR_FLASH_DEV_NAME, 0, 16 * 1024 * 1024, 0}, \
-        {FAL_PART_MAGIC_WROD, "app", "onchip_flash_128k", 0, 8 * 128 * 1024, 0},                  \
-        {FAL_PART_MAGIC_WROD, "param", "onchip_flash_128k", 8 * 128 * 1024, 128 * 1024, 0},       \
-        {FAL_PART_MAGIC_WROD, "factory", "onchip_flash_128k", 9 * 128 * 1024, 7 * 128 * 1024, 0}, \
+#define FAL_PART_TABLE                                                                                          \
+    {                                                                                                           \
+        {FAL_PART_MAGIC_WROD, "spiflash0", FAL_USING_NOR_FLASH_DEV_NAME, 0, 8 * 1024 * 1024, 0},                \
+        {FAL_PART_MAGIC_WROD, "spiflash1", FAL_USING_NOR_FLASH_DEV_NAME, 8 * 1024 * 1024, 32 * 1024, 0},        \
+        {FAL_PART_MAGIC_WROD, "app", "onchip_flash_128k", 0, 8 * 128 * 1024, 0},                                \
+        {FAL_PART_MAGIC_WROD, "param", "onchip_flash_128k", 8 * 128 * 1024, 128 * 1024, 0},                     \
+        {FAL_PART_MAGIC_WROD, "factory", "onchip_flash_128k", 9 * 128 * 1024, 7 * 128 * 1024, 0},               \
     }
 #else
 #define FAL_PART_TABLE \
