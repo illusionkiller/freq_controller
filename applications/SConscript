@@ -5,7 +5,7 @@ cwd     = GetCurrentDir()
 src     = Split("""
 main.c
 dtu.c
-
+env.c
 """)
 
 group = DefineGroup('Applications', src, depend = [''])

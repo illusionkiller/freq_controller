@@ -8,9 +8,8 @@
  * 2020-06-18     thread-liu        the first version
  * 2020-10-09     thread-liu   Porting for stm32h7xx
  */
-
-#if defined(BSP_USING_DAC1) || defined(BSP_USING_DAC2)
 #include "drv_config.h"
+#if defined(BSP_USING_DAC1) || defined(BSP_USING_DAC2)
 
 //#define DRV_DEBUG
 #define LOG_TAG             "drv.dac"

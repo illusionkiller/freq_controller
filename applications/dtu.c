@@ -7,34 +7,21 @@
  * Date           Author       Notes
  */
 
-#include <board.h>
-#include <rtthread.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <rtdevice.h>
 #include "modbus_rtu.h"
 #include "modbus_tcp.h"
 #include "netdev.h"
 #include "pcf8575.h"
-#include "flashdb.h"
+#include "env.h"
 
 #define DBG_TAG "DTU"
-#define DBG_LVL DBG_INFO
+#define DBG_LVL DBG_LOG
 #include <rtdbg.h>
-#define DTU_FIRMWARE_VERSION  1
-#define DTU_DEVICE_DEFAULT_SN "DTHT-001"   //最长12位
 
-enum
-{
-    DEVICE_FRE_CONTROL_RANGE_X = 0,
-    DEVICE_FRE_CONTROL_RANGE_KA,
-    DEVICE_FRE_CONTROL_RANGE_Q
-};
 typedef union
 {
     struct
     {
-        uint16_t PLL_REF : 2; //锁相源参考输入信号状态  0:无外部参考 1:参考信号正常 2:参考信号异常
+        uint16_t PLL_REF_STA : 2; //锁相源参考输入信号状态  0:无外部参考 1:参考信号正常 2:参考信号异常
         uint16_t PLL_LOCK : 1; //锁相源输出锁相状态  0:未锁相 1:已锁相
         uint16_t CH1_CLK1_LOCK: 1; //通道1本振1频率锁定状态 0:未锁定 1:已锁定
         uint16_t CH1_CLK2_LOCK: 1; //通道1本振2频率锁定状态 0:未锁定 1:已锁定
@@ -48,11 +35,12 @@ typedef union
 {
     struct
     {
-        uint16_t PLL_INPUT_SEL : 2; // 锁相源参考输入信号选择0:使用内部参考 1:使用外部参考10M 2:使用外部参考100M
+        uint16_t PLL_INPUT_SEL : 2; // 锁相源参考输入信号选择0:使用内部参考100M 1:使用外部参考10M 2:使用外部参考100M
         uint16_t CH1_OUTPUT_EN : 1; // 通道1输出频率开关 0:关闭 1:打开
-        uint16_t CH1_MIDF_SW : 3; // 
+        uint16_t CH1_MIDF_SW : 3; // 通道1中频输出选择
         uint16_t CH2_OUTPUT_EN : 1; // 通道2输出频率开关 0:关闭 1:打开
-        uint16_t CH2_MIDF_SW : 3; //
+        uint16_t CH2_MIDF_SW : 3; // 通道2中频输出选择
+        uint16_t RESERVED : 6;
     };
     uint16_t val;
 } reg1011_t;
@@ -62,14 +50,27 @@ typedef union
     struct
     {
         uint16_t net_link : 1; // 网络连接状态 0:未连接 1:已连接
-        uint16_t com1_link: 1; // 485通道1通信状态 0:未连接 1:已连接
-        uint16_t com2_link: 1; // 485通道2通信状态 0:未连接 1:已连接
-        uint16_t com3_link: 1; // 485通道3通信状态 0:未连接 1:已连接
-        uint16_t com4_link: 1; // 485通道4通信状态 0:未连接 1:已连接
+        uint16_t screen_link: 1; // 485通道2通信状态 0:未连接 1:已连接
+        uint16_t pll_link: 1; // 485通道1通信状态 0:未连接 1:已连接
+        uint16_t ch1_clk1_link: 1; // 485通道3通信状态 0:未连接 1:已连接
+        uint16_t ch1_clk2_link: 1; // 485通道5通信状态 0:未连接 1:已连接
+        uint16_t ch2_clk1_link: 1; // 485通道4通信状态 0:未连接 1:已连接
+        uint16_t ch2_clk2_link: 1; // 485通道6通信状态 0:未连接 1:已连接
+        uint16_t RESERVED : 3;
+        uint16_t RESET_CODE : 6;
     };
     uint16_t val;
-} reg_sysstatus_t;
+} sys_status_t;
 
+typedef union
+{
+    struct
+    {
+        uint16_t reset : 1;      // 1:系统复位
+        uint16_t RESERVED : 15;
+    };
+    uint16_t val;
+} sys_ctrl_t;
 typedef union
 {
     struct
@@ -80,279 +81,406 @@ typedef union
     uint16_t val;
 } reg1016_t;
 
+typedef union
+{
+    struct
+    {
+        uint16_t PLL_LOCK : 1; // D0
+        uint16_t INPUT_REF_STA : 2;
+        uint16_t RESERVED : 5;
+        uint16_t RESET_CODE : 8;
+    };
+    uint16_t val;
+} pll_node_status_t;
 
+typedef union
+{
+    struct
+    {
+        uint16_t REF_10M_100M_SEL : 2; // D0  10M/100M参考输入选择  锁相源参考输入信号选择0:使用内部参考100M 1:使用外部参考10M 2:使用外部参考100M
+    };
+    uint16_t val;
+} pll_node_ctrl_t;
 typedef struct
 {
-    uint32_t IP;          // 0x1000  /rw
-    uint32_t IP_MASK;     // 0x1002
-    uint32_t GATE_WAY;    // 0x1004
-    uint8_t SN[12];          // 设备SN,本地IP  //0x1006
-    uint16_t version;    //固件版本
-    uint16_t LW1010;     
-    uint16_t LW1011;        //中频选择
-    uint32_t ch1_input_fre; // 通道1输入频率
-    uint32_t ch2_input_fre; // 通道2输入频率
-    uint16_t LW1016;        //链路增益
-} device_reg_t;
+    uint16_t mb_id;
+    rtu_modbus_device_t channel_handle;
+    uint16_t status;
+    uint16_t ctrl_reg;
+    uint16_t temperature;       // 锁相源模块温度
+    uint16_t version;
+    uint16_t input_ref_vol;
+    uint64_t freq_set;
+} pll_node_attr_t;
+// 本振节点属性
+typedef struct
+{
+    uint16_t mb_id;
+    rtu_modbus_device_t channel_handle;
+    uint16_t status;
+    uint16_t ctrl_reg;
+    uint16_t temperature;
+    uint16_t version;
+    uint16_t spur_param;
+    uint64_t freq_set;
+} clk_node_attr_t;
+typedef union
+{
+    struct
+    {
+        uint16_t PA_LDO_EN : 1;
+        uint16_t RF_PATH_SEL : 2;
+        uint16_t RESERVED : 13;
+    };
+    uint16_t val;
+} frecov_node_ctrl_t;
 
-#define  DEVICE_FRE_CONTROL_RANGE_X
+// 变频模块节点属性
+typedef struct
+{
+    uint16_t mb_id;
+    rtu_modbus_device_t channel_handle;
+    uint16_t status;
+    uint16_t ctrl_reg;
+    uint16_t temperature;
+    uint16_t version;
+    uint16_t decay_value;
+} frecov_node_attr_t;
+
 #define REG_NUM (128)
 #define LWREG_START_ADDR 0X1000
+#define LWREG_END_ADDR (LWREG_START_ADDR + REG_NUM)
 static uint16_t modbus_regs[REG_NUM] = {0};
-
-static device_reg_t device_reg = {
-    .IP = 0x1e01a8c0,    //192.168.1.30
-    .IP_MASK = 0x00ffffff,
-    .GATE_WAY = 0x0101a8c0,
-    .SN = DTU_DEVICE_DEFAULT_SN,
-    .version = DTU_FIRMWARE_VERSION,
-    .LW1010 = 0,
-    .LW1011 = 0,
-    .ch1_input_fre = 0,
-    .ch2_input_fre = 0,
-    .LW1016 = 0,
-};
-
 static rtu_modbus_device_t rtu1 = RT_NULL;
 static rtu_modbus_device_t rtu2 = RT_NULL;
 static rtu_modbus_device_t rtu3 = RT_NULL;
 static rtu_modbus_device_t rtu4 = RT_NULL;
 static tcp_modbus_device_t tsu = RT_NULL;
+extern sys_reg_t sys_reg;
+static sys_status_t sys_status = {0};
+static reg1010_t node_status = {0};  //外设模块状态
+static sys_ctrl_t sys_ctrl = {0};
+#define RS485_BUS_IDLE_WAITTIME  100 //ms
 
-static struct fdb_kvdb kvdb = {0};
-static struct rt_mutex lock;
-static struct fdb_default_kv_node default_kv_table[] = {
-    {"DEVICE_REG", &device_reg, sizeof(device_reg_t)},
+#if defined DEVICE_FRE_CONTROL_RANGE_KA
+#define BASE_IF1_FREQ 6000000000   // 6000M
+#define FREQ_MULTI_FACTOR  4
+#define CLK_FREQ_OFFSET  0
+#define CLK_FREQ_STEP   1000000
+#define INPUT_FREQ_START   17000000000 //17G
+#define DEFAULT_PLL_MB_ID   1
+#define DEFAULT_CH1_CLK1_MB_ID   1
+#define DEFAULT_CH1_CLK2_MB_ID   2
+#define DEFAULT_CH1_FRECOV_MB_ID   3
+
+#define DEFAULT_CH2_CLK1_MB_ID   1
+#define DEFAULT_CH2_CLK2_MB_ID   2
+#define DEFAULT_CH2_FRECOV_MB_ID   3
+
+static frecov_node_attr_t frecov_node[2] = {
+        {
+            .mb_id = DEFAULT_CH1_FRECOV_MB_ID,
+        },
+        {
+            .mb_id = DEFAULT_CH2_FRECOV_MB_ID,
+        },
 };
-static void kvdb_lock(fdb_db_t db)
+static pll_node_attr_t pll_node = {
+        .mb_id = DEFAULT_PLL_MB_ID,
+};
+static clk_node_attr_t clk_node[2][2] = {
+    {
+        {
+            .mb_id = DEFAULT_CH1_CLK1_MB_ID,
+        },
+        {
+            .mb_id = DEFAULT_CH1_CLK2_MB_ID,
+        },
+    },
+    {
+        {
+            .mb_id = DEFAULT_CH2_CLK1_MB_ID,
+        },
+        {
+            .mb_id = DEFAULT_CH2_CLK2_MB_ID,
+        },
+    }
+};
+extern rt_device_t pcf8575_dev[2];
+
+#elif defined DEVICE_FRE_CONTROL_RANGE_Q
+
+#elif defined DEVICE_FRE_CONTROL_RANGE_X
+
+#endif
+
+//pll参考输入信号选择
+static rt_err_t pll_inputref_select(uint8_t ref_sel)
 {
-    rt_mutex_take(&lock, RT_WAITING_FOREVER);
+    pll_node_ctrl_t pll_ctrl;
+    pll_ctrl.val = pll_node.ctrl_reg;
+    if (ref_sel > 2) return -RT_ERROR;
+    pll_ctrl.REF_10M_100M_SEL = ref_sel;
+    if (pll_node.ctrl_reg != pll_ctrl.val)
+    {
+        if (modbus_rtu_excuse(pll_node.channel_handle, pll_node.mb_id, AGILE_MODBUS_FC_WRITE_SINGLE_REGISTER, 0x0001, 1, &pll_ctrl.val) != MODBUS_RT_EOK)
+        {
+            LOG_E("pll input ref select failed");
+            return -RT_ERROR;
+        }
+        pll_node.ctrl_reg = pll_ctrl.val;
+    }
+    return RT_EOK;
 }
-
-static void kvdb_unlock(fdb_db_t db)
+// 根据输入频率配置本振1节点频率
+static rt_err_t set_clk1_fre(uint8_t channel_idx, uint64_t input_freq_hz)
 {
-    rt_mutex_release(&lock);
-}
-
-
-static rt_err_t set_ch_input_fre(uint8_t ch_id,uint32_t fre)
-{
-    rt_err_t ret = RT_EOK;
+    rt_thread_mdelay(RS485_BUS_IDLE_WAITTIME); // 等待总线空闲
+    int ret = 0;
 #if defined DEVICE_FRE_CONTROL_RANGE_X
-    uint32_t fre_temp = fre + 3100000; // Khz
-    if (ch_id == 1)
-    {
-        LOG_D("set ch1 clk1 frequency %u", fre_temp);
-    }
-    else if (ch_id == 2)
-    {
-        LOG_D("set ch2 clk1 frequency %u", fre_temp);
-    }
+
 #elif defined DEVICE_FRE_CONTROL_RANGE_KA
-    uint32_t fre_temp = (fre + 6000000) / 4; 
-    if (ch_id == 1)
+    if(channel_idx > 1) return -RT_ERROR;
+    if (input_freq_hz < INPUT_FREQ_START)
+        return -RT_ERROR;
+    //根据偏移和步长计算频率所属段
+    uint32_t fre_segment = (input_freq_hz - INPUT_FREQ_START) / (CLK_FREQ_STEP * FREQ_MULTI_FACTOR);
+    //计算段首频率
+    uint64_t fre = INPUT_FREQ_START +  fre_segment * CLK_FREQ_STEP * FREQ_MULTI_FACTOR;
+    uint64_t clk_fre = (fre + BASE_IF1_FREQ) / 4 + CLK_FREQ_OFFSET;
+    if (clk_node[channel_idx][0].freq_set != clk_fre)
     {
-        LOG_D("set ch1 clk1 frequency %u", fre_temp);
-    }
-    else if (ch_id == 2)
-    {
-        LOG_D("set ch2 clk1 frequency %u", fre_temp);
+        uint16_t regs[4] = {0};
+        regs[0] = ((clk_fre >> 48) & 0XFFFF);
+        regs[1] = ((clk_fre >> 32) & 0XFFFF);
+        regs[2] = ((clk_fre >> 16) & 0XFFFF);
+        regs[3] = ((clk_fre >> 0) & 0XFFFF);
+        ret = modbus_rtu_excuse(clk_node[channel_idx][0].channel_handle, clk_node[channel_idx][0].mb_id, AGILE_MODBUS_FC_WRITE_MULTIPLE_REGISTERS, 0x0005, 4, &regs);
+        if (ret != MODBUS_RT_EOK)
+        {
+            LOG_E("set channel%d clk1 frequency %llu failed", channel_idx+1, clk_fre);
+            return -RT_ERROR;
+        }
+        LOG_D("set channel%d clk2 frequency %llu success", channel_idx + 1, clk_fre);
+        clk_node[channel_idx][0].freq_set = clk_fre;
     }
 #elif defined DEVICE_FRE_CONTROL_RANGE_Q
-    uint32_t fre_temp = (fre + 6000000); // Khz
-    if (ch_id == 1)
-    {
-        LOG_D("set ch1 clk1 frequency %u", fre_temp);
-    }
 #endif
-    return ret;
+    return RT_EOK;
 }
 
-// gain = -0.5*gain_value +50
-static rt_err_t set_ch_link_gain(uint8_t ch_id, uint8_t gain_value)
+typedef union
+{
+    struct
+    {
+        uint16_t p00 : 1;
+        uint16_t p01_06 : 6; // gs5801_1 ct1-ct6
+        uint16_t p07 : 1;
+        uint16_t p10:1;
+        uint16_t p11_p16 : 6; // gs5801_2 ct1-ct6
+        uint16_t p17 : 1;
+    };
+    uint16_t val;
+}ct_io_map_t;
+static rt_err_t set_channel_link_gain(uint8_t channel_idx, uint8_t gain_value)
 {
     rt_err_t ret = RT_EOK;
 #if defined DEVICE_FRE_CONTROL_RANGE_X
-    if (ch_id == 1)
-    {
-        LOG_D("set ch1 link gain %d", gain_value);
-    }
-    else if (ch_id == 2)
-    {
-        LOG_D("set ch2 link gain %d", gain_value);
-    }
 #elif defined DEVICE_FRE_CONTROL_RANGE_KA
+    //ct1-ct6 对应bit1-bit6
+    ct_io_map_t ct_map = {0};
+    if (channel_idx > 1)
+        return -RT_ERROR;
     struct pcf8575c_io_map io_map = {0};
-    if (gain_value <= 60) // 衰减没有超过30dB,只使用前级衰减
+    if (gain_value <= 63) // 衰减没有超过30dB,只使用前级衰减
     {
-        io_map.mask = 0x003F; // bit0-bit5    gs5801_1
-        io_map.value = gain_value;
+        ct_map.p01_06 = gain_value;
     }
     else
     {
-        io_map.mask = 0x0FFF; // bit0-bit11   gs5801_1  gs5801_2
-        io_map.value = ((gain_value - 60) << 6);
+        ct_map.p01_06 = 63;
+        ct_map.p11_p16 = gain_value - 63;
     }
-    if (ch_id == 1)
-    {
-        LOG_D("set ch1 link gain %d", gain_value);
-        // rt_device_control(gain_dev[0], PCF8575C_CMD_SET_VALUE, &io_map);
-    }
-    else if (ch_id == 2)
-    {
-        LOG_D("set ch2 link gain %d", gain_value);
-        // rt_device_control(gain_dev[1], PCF8575C_CMD_SET_VALUE, &io_map);
-    }
+    io_map.mask = 0xFFFF;
+    io_map.value = ct_map.val;
+    float real_gain = -0.5 * gain_value + 50;
+    LOG_D("set ch2 link gain raw%d real(%.1fdB)", gain_value, real_gain);
+    rt_device_control(pcf8575_dev[channel_idx], PCF8575C_CMD_SET_VALUE, &io_map);
 #elif defined DEVICE_FRE_CONTROL_RANGE_Q
-    if (gain_value <= 60)
-    {
-        io_map.mask = 0x003F; // bit0-bit5    gs5801_1
-        io_map.value = gain_value;
-    }
-    else
-    {
-        io_map.mask = 0x0FFF; // bit0-bit11   gs5801_1  gs5801_2
-        io_map.value = ((gain_value - 60) << 6);
-    }
-    LOG_D("set ch link gain %d", gain_value);
-    // rt_device_control(gain_dev[0], PCF8575C_CMD_SET_VALUE, &io_map);
 #endif
     return ret;
 }
-
-static rt_err_t switch_medium_frequency(uint8_t ch_id, uint8_t switch_id)
+//根据所选中频频率索引配置本振2
+static rt_err_t set_clk2_freq_by_if(uint8_t channel_idx, uint8_t if_idx, uint64_t input_freq_hz,rt_bool_t channel_output_en)
 {
-    rt_err_t ret = RT_EOK;
-    uint32_t fre_temp = 0;
+    rt_thread_mdelay(RS485_BUS_IDLE_WAITTIME); // 等待总线空闲
+    rt_err_t ret = 0;
+    uint64_t clk_fre = 0, IF = 0;
 #if defined DEVICE_FRE_CONTROL_RANGE_X
-    switch (switch_id)
+#elif defined(DEVICE_FRE_CONTROL_RANGE_KA)
+    if ((channel_idx > 1))
+        return -RT_ERROR;
+    if (clk_node[channel_idx][0].freq_set * 4 <= input_freq_hz) return -RT_ERROR;
+    IF = clk_node[channel_idx][0].freq_set * 4 - input_freq_hz;
+    // 计算前级输入频率
+    switch (if_idx)
     {
     case 0:
-        fre_temp = 3820000; // Khz
-        LOG_D("open RF1");
+        clk_fre = IF + 720000000;
         break;
     case 1:
-        fre_temp = 4300000; // Khz
-        LOG_D("open RF2");
-        break;
-    default:
-        break;
-    }
-    if (ch_id == 1)
-    {
-        LOG_D("set ch1 clk2 frequency %u", fre_temp);
-    }
-    else if (ch_id == 2)
-    {
-        LOG_D("set ch2 clk2 frequency %u", fre_temp);
-    }
-#elif defined(DEVICE_FRE_CONTROL_RANGE_KA) || defined(DEVICE_FRE_CONTROL_RANGE_Q)
-    switch (switch_id)
-    {
-    case 0:
-        fre_temp = 6720000; // Khz
-        LOG_D("open RF1");
-        break;
-    case 1:
-        fre_temp = 7200000; // Khz
-        LOG_D("open RF2");
+        clk_fre = IF + 1200000000;
         break;
     case 2:
-        fre_temp = 7500000; // Khz
-        LOG_D("open RF3");
+        clk_fre = IF + 1500000000;
         break;
     case 3:
-        fre_temp = 7800000; // Khz
-        LOG_D("open RF4");
+        clk_fre = IF + 1800000000;
         break;
     default:
         break;
     }
-    if (ch_id == 1)
+    if (clk_node[channel_idx][1].freq_set != clk_fre)
     {
-        LOG_D("set ch1 clk2 frequency %u", fre_temp);//通道1本振2
+        uint16_t regs[4] = {0};
+        regs[0] = ((clk_fre >> 48) & 0XFFFF);    
+        regs[1] = ((clk_fre >> 32) & 0XFFFF);
+        regs[2] = ((clk_fre >> 16) & 0XFFFF);
+        regs[3] = ((clk_fre >> 0) & 0XFFFF);
+        ret = modbus_rtu_excuse(clk_node[channel_idx][1].channel_handle, clk_node[channel_idx][1].mb_id, AGILE_MODBUS_FC_WRITE_MULTIPLE_REGISTERS, 0x0005, 4, &regs);
+        if (ret != MODBUS_RT_EOK)
+        {
+            LOG_E("set channel%d clk2 frequency %llu failed", channel_idx+1, clk_fre);
+            return -RT_ERROR;
+        }
+        LOG_I("set channel%d clk2 frequency %llu success", channel_idx+1, clk_fre);
+        clk_node[channel_idx][1].freq_set = clk_fre;
     }
-    else if (ch_id == 2) // Q频段没有通道2
+    rt_thread_mdelay(RS485_BUS_IDLE_WAITTIME); // 等待总线空闲
+    frecov_node_ctrl_t ctrl_reg;
+    ctrl_reg.val = frecov_node[channel_idx].ctrl_reg;
+    ctrl_reg.RF_PATH_SEL = if_idx;
+    ctrl_reg.PA_LDO_EN = channel_output_en;
+    if (ctrl_reg.val != frecov_node[channel_idx].ctrl_reg)
     {
-        LOG_D("set ch2 clk2  frequency %u", fre_temp);
+        ret = modbus_rtu_excuse(frecov_node[channel_idx].channel_handle, frecov_node[channel_idx].mb_id, AGILE_MODBUS_FC_WRITE_SINGLE_REGISTER, 0x0001, 1, &ctrl_reg);
+        if (ret != MODBUS_RT_EOK)
+        {
+            LOG_E("set channel%d frecov failed", channel_idx);
+            return -RT_ERROR;
+        }
+        frecov_node[channel_idx].ctrl_reg = ctrl_reg.val;
+        LOG_I("set channel%d frecov success", channel_idx);
     }
+#elif defined DEVICE_FRE_CONTROL_RANGE_Q
 #endif
-    return ret;
+    return RT_EOK;
 }
 
-rt_err_t mb_fun_read_holding_registers(uint16_t addr, unsigned char reg_count, uint16_t *reg_buffer)
+rt_err_t mb_fun_read_holding_registers(int addr, unsigned char reg_count, uint16_t *reg_buffer)
 {
     rt_err_t ret = RT_EOK;
-    if (addr < LWREG_START_ADDR)
-        return -RT_ERROR;
-    uint16_t start_addr_index = addr - LWREG_START_ADDR;
-    uint16_t end_addr_index = start_addr_index + reg_count;
-    if (end_addr_index >= REG_NUM) return -RT_ERROR;
-    for (uint16_t addr_index = start_addr_index; addr_index < end_addr_index;)
+    int start_addr_index = LWREG_START_ADDR;
+    int end_addr_index = addr + reg_count;
+    if(addr < start_addr_index || end_addr_index > LWREG_END_ADDR ) return -RT_ERROR;
+    for (int addr_index = addr; addr_index < end_addr_index;)
     {
         switch (addr_index)
         {
-        case 0:
+        case 0x1000:
             {
-                uint32_t big_endian_ip = htonl(device_reg.IP);
-                reg_buffer[addr_index] = big_endian_ip >> 16;
-                reg_buffer[addr_index + 1] = big_endian_ip & 0xFFFF;
+                uint32_t big_endian_ip = htonl(sys_reg.IP);
+                reg_buffer[addr_index - start_addr_index] = big_endian_ip >> 16;
+                reg_buffer[addr_index - start_addr_index + 1] = big_endian_ip & 0xFFFF;
                 addr_index += 2;
             }
             break;
-        case 2:
+        case 0x1002:
             {
-                uint32_t big_endian_ip_mask = htonl(device_reg.IP_MASK);
-                reg_buffer[addr_index] = big_endian_ip_mask >> 16;
-                reg_buffer[addr_index + 1] = big_endian_ip_mask & 0xFFFF;
+                uint32_t big_endian_ip_mask = htonl(sys_reg.IP_MASK);
+                reg_buffer[addr_index - start_addr_index] = big_endian_ip_mask >> 16;
+                reg_buffer[addr_index - start_addr_index + 1] = big_endian_ip_mask & 0xFFFF;
                 addr_index += 2;
             }
             break;
-        case 4:
+        case 0x1004:
             {
-                uint32_t big_endian_gateway = htonl(device_reg.GATE_WAY);
-                reg_buffer[addr_index] = big_endian_gateway >> 16;
-                reg_buffer[addr_index + 1] = big_endian_gateway & 0xFFFF;
+                uint32_t big_endian_gateway = htonl(sys_reg.GATE_WAY);
+                reg_buffer[addr_index - start_addr_index] = big_endian_gateway >> 16;
+                reg_buffer[addr_index - start_addr_index + 1] = big_endian_gateway & 0xFFFF;
                 addr_index += 2;
             }
             break;
-        case 6:
+        case 0x1006:
             {
                 for (int i = 0; i < 6; i++)
                 {
-                    reg_buffer[addr_index + i] = (device_reg.SN[i * 2] << 8) | device_reg.SN[i * 2 + 1];
+                    reg_buffer[addr_index - start_addr_index + i] = (sys_reg.SN[i * 2] << 8) | sys_reg.SN[i * 2 + 1];
                 }
                 addr_index += 6;
             }
             break;
-        case 12:
-            reg_buffer[addr_index] = device_reg.version;
+        case 0x100C:  //固件版本
+            reg_buffer[addr_index - start_addr_index] = DTU_FIRMWARE_VERSION;
             addr_index += 1;
             break;
-        case 13:    //系统状态
-            reg_buffer[addr_index] = 0;
+        case 0x100D:    //系统状态
+            reg_buffer[addr_index - start_addr_index] = sys_status.val;
             addr_index += 1;
             break;
-        case 16:
-            reg_buffer[addr_index] = device_reg.LW1010;
+        case 0x1010:  //外设模块状态
+            reg_buffer[addr_index - start_addr_index] = node_status.val;
             addr_index += 1;
             break;
-        case 17:
-            reg_buffer[addr_index] = device_reg.LW1011;
+        case 0x1011: //外设模块控制
+            {
+                reg1011_t reg = {0};
+                pll_node_ctrl_t pll_ctrl_reg;
+                pll_ctrl_reg.val = pll_node.ctrl_reg;
+                reg.PLL_INPUT_SEL = pll_ctrl_reg.REF_10M_100M_SEL;
+                frecov_node_ctrl_t frecov_ctrl_reg;
+                frecov_ctrl_reg.val = frecov_node[0].ctrl_reg;
+                reg.CH1_MIDF_SW = frecov_ctrl_reg.RF_PATH_SEL;
+                reg.CH1_OUTPUT_EN = frecov_ctrl_reg.PA_LDO_EN;
+                frecov_ctrl_reg.val = frecov_node[1].ctrl_reg;
+                reg.CH2_MIDF_SW = frecov_ctrl_reg.RF_PATH_SEL;
+                reg.CH2_OUTPUT_EN = frecov_ctrl_reg.PA_LDO_EN;
+                reg_buffer[addr_index - start_addr_index] = reg.val;
+            }
             addr_index += 1;
             break;
-        case 18:
-            reg_buffer[addr_index] = device_reg.ch1_input_fre >> 16;
-            reg_buffer[addr_index + 1] = device_reg.ch1_input_fre & 0xFFFF;
+        case 0x1012:
+            reg_buffer[addr_index - start_addr_index] = sys_reg.CH1_INPUT_FRE >> 16;
+            reg_buffer[addr_index - start_addr_index + 1] = sys_reg.CH1_INPUT_FRE & 0xFFFF;
             addr_index += 2;
             break;
-        case 20:
-            reg_buffer[addr_index] = device_reg.ch2_input_fre >> 16;
-            reg_buffer[addr_index + 1] = device_reg.ch2_input_fre & 0xFFFF;
+        case 0x1014:
+            reg_buffer[addr_index - start_addr_index] = sys_reg.CH2_INPUT_FRE >> 16;
+            reg_buffer[addr_index - start_addr_index + 1] = sys_reg.CH2_INPUT_FRE & 0xFFFF;
             addr_index += 2;
             break;
-        case 22:
-            reg_buffer[addr_index] = device_reg.LW1016;
+        case 0x1016:
+            reg_buffer[addr_index - start_addr_index] = sys_reg.LW1016;
+            addr_index += 1;
+            break;
+        case 0x1017: 
+            reg_buffer[addr_index - start_addr_index] = pll_node.temperature;
+            addr_index += 1;
+            break;
+        case 0x1018:
+            reg_buffer[addr_index - start_addr_index] = clk_node[0][0].temperature;
+            addr_index += 1;
+            break;
+        case 0x1019:
+            reg_buffer[addr_index - start_addr_index] = clk_node[0][1].temperature;
+            addr_index += 1;
+            break;
+        case 0x101B:
+            reg_buffer[addr_index - start_addr_index] = clk_node[1][0].temperature;
+            addr_index += 1;
+            break;
+        case 0x101C:
+            reg_buffer[addr_index - start_addr_index] = clk_node[1][1].temperature;
             addr_index += 1;
             break;
         default:
@@ -363,144 +491,129 @@ rt_err_t mb_fun_read_holding_registers(uint16_t addr, unsigned char reg_count, u
     return ret;
 }
 
-rt_err_t mb_fun_write_registers(uint16_t addr, unsigned char reg_count, uint16_t *reg_buffer)
+rt_err_t mb_fun_write_registers(int addr, unsigned char reg_count, uint16_t *reg_buffer)
 {
     rt_err_t ret = RT_EOK;
-    if (addr < LWREG_START_ADDR)
-        return -RT_ERROR;
-    uint16_t start_addr_index = addr - LWREG_START_ADDR;
-    uint16_t end_addr_index = start_addr_index + reg_count;
+    int start_addr_index = LWREG_START_ADDR;
+    int end_addr_index = addr + reg_count;
+    if(addr < start_addr_index || end_addr_index > LWREG_END_ADDR ) return -RT_ERROR;
     struct fdb_blob blob;
-    if (end_addr_index >= REG_NUM)
-        return -RT_ERROR;
-    for (uint16_t addr_index = start_addr_index; addr_index < end_addr_index;)
+    sys_reg_t sys_reg_temp = {0};
+    sys_reg_temp = sys_reg;
+    for (int addr_index = addr; addr_index < end_addr_index;)
     {
         switch (addr_index)
         {
-        case 0:
-            device_reg.IP = ntohl((reg_buffer[addr_index] << 16) | reg_buffer[addr_index + 1]);
+        case 0x1000:
+            sys_reg_temp.IP = ntohl((reg_buffer[addr_index - start_addr_index] << 16) | reg_buffer[addr_index - start_addr_index + 1]);
             addr_index += 2;
-            // fdb_kv_set_blob(&kvdb, "DEVICE_REG", fdb_blob_make(&blob, &device_reg, sizeof(device_reg)));
             break;
-        case 2:
-            device_reg.IP_MASK = ntohl((reg_buffer[addr_index] << 16) | reg_buffer[addr_index + 1]);
+        case 0x1002:
+            sys_reg_temp.IP_MASK = ntohl((reg_buffer[addr_index - start_addr_index] << 16) | reg_buffer[addr_index - start_addr_index + 1]);
             addr_index += 2;
-            // fdb_kv_set_blob(&kvdb, "DEVICE_REG", fdb_blob_make(&blob, &device_reg, sizeof(device_reg)));
             break;
-        case 4:
-            device_reg.GATE_WAY = ntohl((reg_buffer[addr_index] << 16) | reg_buffer[addr_index + 1]);
+        case 0x1004:
+            sys_reg_temp.GATE_WAY = ntohl((reg_buffer[addr_index - start_addr_index] << 16) | reg_buffer[addr_index - start_addr_index + 1]);
             addr_index += 2;
-            // fdb_kv_set_blob(&kvdb, "DEVICE_REG", fdb_blob_make(&blob, &device_reg, sizeof(device_reg)));
             break;
-        case 6:
-            rt_memcpy(device_reg.SN, (uint8_t *)&reg_buffer[addr_index], sizeof(device_reg.SN));
-            addr_index += 1;
-            // fdb_kv_set_blob(&kvdb, "DEVICE_REG", fdb_blob_make(&blob, &device_reg, sizeof(device_reg)));
-            break;
-        case 14:
-            addr_index += 1;
-            if (READ_BIT(reg_buffer[addr_index], 1) == 0x01) // bit0系统重启控制位
+        case 0x100E:  //系统控制
+            sys_ctrl.val = reg_buffer[addr_index - start_addr_index];
+            if (sys_ctrl.reset) // bit0系统重启控制位
             {
                 LOG_D("reboot now");
                 rt_thread_mdelay(100);  //安全操作
                 rt_hw_cpu_reset();
             }
+            addr_index += 1;
             break;
-        case 17:
+        case 0x1011:
             {
-                if (device_reg.LW1011 != reg_buffer[addr_index])
+                sys_reg_temp.LW1011 = reg_buffer[addr_index - start_addr_index];
+                reg1011_t *reg = (reg1011_t *)&sys_reg_temp.LW1011;
+                uint64_t input_freq_hz = 0;
+                if(sys_status.pll_link == RT_TRUE)
                 {
-                    reg1011_t *ptr1 = (reg1011_t *)&device_reg.LW1011;
-                    reg1011_t *ptr2 = (reg1011_t *)&reg_buffer[addr_index];
-                    if(ptr1->CH1_MIDF_SW != ptr2->CH1_MIDF_SW)
-                    {
-                        ptr1->CH1_MIDF_SW = ptr2->CH1_MIDF_SW;
-                    }
-                    if(ptr1->CH2_MIDF_SW != ptr2->CH2_MIDF_SW)
-                    {
-                        ptr1->CH2_MIDF_SW = ptr2->CH2_MIDF_SW;
-                    }
-                    if(ptr1->CH1_MIDF_SW != ptr2->CH1_MIDF_SW)
-                    {
-                        ptr1->CH1_MIDF_SW = ptr2->CH1_MIDF_SW;
-                    }
-                    if(ptr1->CH2_MIDF_SW != ptr2->CH2_MIDF_SW)
-                    {
-                        ptr1->CH2_MIDF_SW = ptr2->CH2_MIDF_SW;
-                    }
-                    // if (ptr->CH1_MIDF_SW)
-                    //     fdb_kv_set_blob(&kvdb, "DEVICE_REG", fdb_blob_make(&blob, &device_reg, sizeof(device_reg)));
+                    pll_inputref_select(reg->PLL_INPUT_SEL);
+                }
+                if (sys_status.ch1_clk2_link == RT_TRUE)
+                {
+                    input_freq_hz = (uint64_t)sys_reg.CH1_INPUT_FRE * 1000;
+                    set_clk2_freq_by_if(0, reg->CH1_MIDF_SW, input_freq_hz, reg->CH1_OUTPUT_EN);
+                }
+                if (sys_status.ch2_clk2_link == RT_TRUE)
+                {
+                    input_freq_hz = (uint64_t)sys_reg.CH2_INPUT_FRE * 1000;
+                    set_clk2_freq_by_if(1, reg->CH2_MIDF_SW, input_freq_hz, reg->CH2_OUTPUT_EN);
                 }
             }
             addr_index += 1;
             break;
-        case 18:
-            device_reg.ch1_input_fre = (reg_buffer[addr_index] << 16) | reg_buffer[addr_index + 1];
+        case 0x1012:
+            {
+                sys_reg_temp.CH1_INPUT_FRE = (reg_buffer[addr_index - start_addr_index] << 16) | reg_buffer[addr_index - start_addr_index + 1];
+                uint64_t input_freq_hz = (uint64_t)sys_reg.CH2_INPUT_FRE * 1000;
+                set_clk1_fre(0, input_freq_hz);
+            }
             addr_index += 2;
-            // fdb_kv_set_blob(&kvdb, "DEVICE_REG", fdb_blob_make(&blob, &device_reg, sizeof(device_reg)));
             break;
-        case 20:
-            device_reg.ch2_input_fre = (reg_buffer[addr_index] << 16) | reg_buffer[addr_index + 1];
+        case 0x1014:
+            {
+                sys_reg_temp.CH2_INPUT_FRE = (reg_buffer[addr_index - start_addr_index] << 16) | reg_buffer[addr_index - start_addr_index + 1];
+                uint64_t input_freq_hz = (uint64_t)sys_reg.CH2_INPUT_FRE * 1000;
+                set_clk1_fre(1, input_freq_hz);
+            }
             addr_index += 2;
-            // fdb_kv_set_blob(&kvdb, "DEVICE_REG", fdb_blob_make(&blob, &device_reg, sizeof(device_reg)));
             break;
-        case 22:
-            device_reg.LW1016 = reg_buffer[addr_index];
-            addr_index += 1;
-            // fdb_kv_set_blob(&kvdb, "DEVICE_REG", fdb_blob_make(&blob, &device_reg, sizeof(device_reg)));
+        case 0x1016:
+            {
+                sys_reg_temp.LW1016 = reg_buffer[addr_index - start_addr_index];
+                reg1016_t *reg = (reg1016_t *)&sys_reg_temp.LW1016;
+                set_channel_link_gain(0, reg->CH1_GAIN);
+                set_channel_link_gain(1, reg->CH2_GAIN);
+                addr_index += 1;
+            }
             break;
         default:
             addr_index++;
             break;
         }
+        if(rt_memcmp(&sys_reg, &sys_reg_temp, sizeof(sys_reg)) != 0)
+        {
+            sys_reg = sys_reg_temp;
+            save_sys_regs();
+        }
     }
     return ret;
 }
 
-int rtu_slave_done_callback(agile_modbus_t *ctx, int slave, int function,int addr, int quantity) {
-    (void)(ctx);
-    LOG_D("rtu_slave done. addr: %d, function: %d, regaddr: %d, quantity: %d.", slave, function, addr, quantity);
-    rt_err_t ret = RT_EOK;
-    // modbus_rtu_excuse(rtu1, ) 
-    switch (function)
-    {
-    case AGILE_MODBUS_FC_READ_HOLDING_REGISTERS: 
-    case AGILE_MODBUS_FC_READ_INPUT_REGISTERS:
-        ret = mb_fun_read_holding_registers(addr, quantity, modbus_regs);
-        break;
-    case AGILE_MODBUS_FC_WRITE_SINGLE_REGISTER:
-        ret = mb_fun_write_registers(addr, 1, modbus_regs);
-        break;
-    case AGILE_MODBUS_FC_WRITE_MULTIPLE_REGISTERS:
-        ret = mb_fun_write_registers(addr, quantity, modbus_regs);
-        break;
-    default:
-        break;
-    }
-    return MODBUS_RT_EOK;
-}
-
-int rtu_master_done_callback(agile_modbus_t *ctx, int slave, int function, int addr, int quantity)
+int slave_pre_ans_callback(agile_modbus_t *ctx, int slave, int function, int addr, int quantity)
 {
     (void)(ctx);
-    LOG_I("rtu_master done. addr: %d, function: %d, regaddr: %d, quantity: %d.", slave, function, addr, quantity);
-    return MODBUS_RT_EOK;
-}
-
-int udp_slave_done_callback(agile_modbus_t *ctx, int slave, int function, int addr, int quantity)
-{
-    (void)(ctx);
-    LOG_I("udp_slave done. addr: %d, function: %d, addr: %d, quantity: %d.", slave, function, addr, quantity);
+    // LOG_I("slaveid: %d, function: %d, addr: 0x%04x, quantity: %d.", slave, function, addr, quantity);
+    if(ctx)
     if (slave == 1)
     {
         rt_err_t ret = RT_EOK;
         switch (function)
         {
         case AGILE_MODBUS_FC_READ_HOLDING_REGISTERS:
-        case AGILE_MODBUS_FC_READ_INPUT_REGISTERS:
             ret = mb_fun_read_holding_registers(addr, quantity, modbus_regs);
             break;
+        default:
+            break;
+        }
+    }
+    return MODBUS_RT_EOK;
+}
 
+int slave_done_callback(agile_modbus_t *ctx, int slave, int function, int addr, int quantity)
+{
+    (void)(ctx);
+    if (slave == 1)
+    {
+        rt_err_t ret = RT_EOK;
+        switch (function)
+        {
         case AGILE_MODBUS_FC_WRITE_SINGLE_REGISTER:
             ret = mb_fun_write_registers(addr, 1, modbus_regs);
             break;
@@ -521,7 +634,8 @@ rtu_modbus_device_t modbus_rtu_slave_init(char *port)
     modbus_rtu_set_addr(rs, 1);
     modbus_rtu_set_serial(rs, port, 115200, 8, 'N', 1, 0);
     modbus_rtu_add_block(rs, REGISTERS, LWREG_START_ADDR, modbus_regs, REG_NUM);
-    modbus_rtu_set_done_callback(rs, rtu_slave_done_callback);
+    modbus_rtu_set_pre_ans_callback(rs, slave_pre_ans_callback);
+    modbus_rtu_set_done_callback(rs, slave_done_callback);
     modbus_rtu_open(rs);
     LOG_I("modbus rtu slave open on port %s success", port);
     return rs;
@@ -532,7 +646,7 @@ rtu_modbus_device_t modbus_rtu_master_init(char *port)
     rtu_modbus_device_t rm = modbus_rtu(MODBUS_MASTER);
     RT_ASSERT(rm != NULL);
     modbus_rtu_set_serial(rm, port, 115200, 8, 'N', 1, 0);
-    modbus_rtu_set_done_callback(rm, rtu_master_done_callback);
+    modbus_rtu_set_done_callback(rm, NULL);
     modbus_rtu_open(rm);
     LOG_I("modbus rtu master open on port %s success", port);
     return rm;
@@ -545,10 +659,37 @@ tcp_modbus_device_t modbus_tcp_slave_for_udp_init(char *ip, uint16_t port)
     modbus_tcp_set_net(tsu, ip, port, SOCK_DGRAM);
     modbus_tcp_set_strict(tsu, 1);
     modbus_tcp_add_block(tsu, REGISTERS, LWREG_START_ADDR, modbus_regs, REG_NUM);
-    modbus_tcp_set_done_callback(tsu, udp_slave_done_callback);
+    modbus_tcp_set_pre_ans_callback(tsu, slave_pre_ans_callback);
+    modbus_tcp_set_done_callback(tsu, slave_done_callback);
     modbus_tcp_open(tsu);
     LOG_I("modbus tcp slave for udp open on port %d success", port);
     return tsu;
+}
+
+static void netdev_status_callback(struct netdev *netdev, enum netdev_cb_type type)
+{
+    if (type == NETDEV_CB_STATUS_LINK_UP)
+    {
+        sys_status.net_link = RT_TRUE;
+        LOG_I("netdev event(NETDEV_CB_STATUS_LINK_UP) happend");
+        if(tsu == RT_NULL)
+        {
+            tsu = modbus_tcp_slave_for_udp_init(NULL, 502);
+        }
+    }
+    else if (type == NETDEV_CB_STATUS_LINK_DOWN)
+    {
+        sys_status.net_link = RT_FALSE;
+        LOG_I("netdev event(NETDEV_CB_STATUS_LINK_DOWN) happend");
+    }
+    else if (type == NETDEV_CB_STATUS_INTERNET_UP)
+    {
+        LOG_I("netdev event(NETDEV_CB_STATUS_INTERNET_UP) happend");
+    }
+    else if (type == NETDEV_CB_STATUS_INTERNET_DOWN)
+    {
+        LOG_I("netdev event(NETDEV_CB_STATUS_INTERNET_DOWN) happend");
+    }
 }
 
 static rt_err_t netdev_set_if(char *netdev_name, char *ip_addr, char *gw_addr, char *nm_addr)
@@ -562,7 +703,10 @@ static rt_err_t netdev_set_if(char *netdev_name, char *ip_addr, char *gw_addr, c
         LOG_E("bad network interface device name(%s).", netdev_name);
         return -RT_ERROR;
     }
-
+    if(netdev_is_link_up(netdev))
+        sys_status.net_link = RT_TRUE;
+    else
+        sys_status.net_link = RT_FALSE;
 #ifdef RT_LWIP_DHCP
     netdev_dhcp_enabled(netdev, RT_FALSE);
 #endif
@@ -584,255 +728,239 @@ static rt_err_t netdev_set_if(char *netdev_name, char *ip_addr, char *gw_addr, c
     {
         netdev_set_netmask(netdev, &addr);
     }
+    netdev_set_status_callback(netdev, netdev_status_callback);
     return RT_EOK;
-}
-
-static void load_kvdb_para(void)
-{
-    struct fdb_blob blob;
-    char ip[IP4ADDR_STRLEN_MAX+1] = {0};
-    char ip_mask[IP4ADDR_STRLEN_MAX+1] = {0};
-    char gate_way[IP4ADDR_STRLEN_MAX+1] = {0};
-    fdb_kv_get_blob(&kvdb, "DEVICE_REG", fdb_blob_make(&blob, &device_reg, sizeof(device_reg)));
-    inet_ntoa_r(device_reg.IP, ip, IP4ADDR_STRLEN_MAX);
-    inet_ntoa_r(device_reg.IP_MASK, ip_mask, IP4ADDR_STRLEN_MAX);
-    inet_ntoa_r(device_reg.GATE_WAY, gate_way, IP4ADDR_STRLEN_MAX);
-    netdev_set_if("e0", ip, gate_way, ip_mask);
-}
-static int env_kvdb_init(void)
-{
-    rt_thread_delay(RT_TICK_PER_SECOND);
-// #define dir_path "/spiflash/fdb_kvdb/"
-#define dir_path "spiflash1"
-    fdb_err_t result;
-    bool file_mode = true;
-    bool not_formatable = true;
-    uint32_t sec_size = 4096;
-    uint32_t db_size = sec_size * 4;
-    struct fdb_default_kv default_kv;
-    default_kv.kvs = default_kv_table;
-    default_kv.num = sizeof(default_kv_table) / sizeof(default_kv_table[0]);
-#ifdef FDB_KV_AUTO_UPDATE
-    kvdb.ver_num = 2;
-#endif
-    rt_mutex_init(&lock, "env", RT_IPC_FLAG_FIFO);
-    fdb_kvdb_control(&kvdb, FDB_KVDB_CTRL_SET_LOCK, kvdb_lock);
-    fdb_kvdb_control(&kvdb, FDB_KVDB_CTRL_SET_UNLOCK, kvdb_unlock);
-    /* set the sector and database max size */
-    // fdb_kvdb_control(&kvdb, FDB_KVDB_CTRL_SET_SEC_SIZE, &sec_size);
-    // fdb_kvdb_control(&kvdb, FDB_KVDB_CTRL_SET_MAX_SIZE, &db_size);
-    /* enable file mode */
-    // fdb_kvdb_control(&kvdb, FDB_KVDB_CTRL_SET_FILE_MODE, &file_mode);
-    // fdb_kvdb_control(&kvdb, FDB_KVDB_CTRL_SET_NOT_FORMAT, &not_formatable);
-    // mkdir(dir_path, 0777);
-    result = fdb_kvdb_init(&kvdb, "env", dir_path, &default_kv, NULL);
-    if (result != FDB_NO_ERR)
-    {
-        return -RT_ERROR;
-    }
-    return RT_EOK;
-}
-
-
-static int env_print_regs(uint8_t argc, char **argv)
-{
-    fdb_kv_print(&kvdb);
-    struct fdb_blob blob;
-    device_reg_t regs = {0};
-    fdb_kv_get_blob(&kvdb, "DEVICE_REG", fdb_blob_make(&blob, &regs, sizeof(regs)));
-    if (blob.saved.len > 0)
-    {
-        LOG_D("IP:%d\nMASK:%d\nGW:%d\nVERSION:%d\nCH1_INPUT_FREQ:%d\nCH2_INPUT_FREQ:%d\nSN:%s\nLW1011:%d\nLW1016:%d",
-              regs.IP, regs.IP_MASK, regs.GATE_WAY, regs.version,
-              regs.ch1_input_fre,
-              regs.ch2_input_fre, regs.SN, regs.LW1011, regs.LW1016);
-        return 0;
-    }
-    return -1;
-}
-MSH_CMD_EXPORT_ALIAS(env_print_regs, env_print, print saved regs saved kvdb);
-
-static void netdev_status_callback(struct netdev *netdev, enum netdev_cb_type type)
-{
-    if (type == NETDEV_CB_STATUS_LINK_UP)
-    {
-        LOG_I("netdev event(NETDEV_CB_STATUS_LINK_UP) happend");
-        if(tsu == RT_NULL)
-        {
-            tsu = modbus_tcp_slave_for_udp_init(NULL, 502);
-        }
-    }
-    else if (type == NETDEV_CB_STATUS_LINK_DOWN)
-    {
-        LOG_I("netdev event(NETDEV_CB_STATUS_LINK_DOWN) happend");
-    }
-    else if (type == NETDEV_CB_STATUS_INTERNET_UP)
-    {
-        LOG_I("netdev event(NETDEV_CB_STATUS_INTERNET_UP) happend");
-    }
-    else if (type == NETDEV_CB_STATUS_INTERNET_DOWN)
-    {
-        LOG_I("netdev event(NETDEV_CB_STATUS_INTERNET_DOWN) happend");
-    }
 }
 
 static void dtu_thread_entry(void *parameter)
 {
-    uint16_t regs[5] = {0};
+    uint16_t regs[10] = {0};
     reg1010_t *reg1010 = RT_NULL;
-    reg1010 = (reg1010_t *)&device_reg.LW1010;
-    // load_kvdb_para();
+    reg1010 = (reg1010_t *)&node_status;
+    uint32_t buffer[2] = {0};
+    int ret = MODBUS_RT_EOK;
+    extern uint8_t get_last_reset_code(void);
+    uint8_t reset_code = get_last_reset_code();
+    sys_status.RESET_CODE = reset_code;
+    reg1011_t *reg1011 = (reg1011_t *)&sys_reg.LW1011;    
+    reg1016_t *reg1016 = (reg1016_t *)&sys_reg.LW1016;
+    reg1011->PLL_INPUT_SEL = 0;
+#if defined DEVICE_FRE_CONTROL_RANGE_X
+
+#elif defined DEVICE_FRE_CONTROL_RANGE_KA
+    reg1011->CH1_OUTPUT_EN = 0;
+    reg1011->CH2_OUTPUT_EN = 0;
+    rt_thread_mdelay(5000); // 等待外设模块上电稳定//根据存储的外设配置配置外设
+    pll_inputref_select( reg1011->PLL_INPUT_SEL);
+    uint64_t input_freq_hz = (uint64_t)sys_reg.CH1_INPUT_FRE * 1000;
+    set_clk1_fre(0, input_freq_hz);
+    set_channel_link_gain(0, reg1016->CH1_GAIN);
+    set_clk2_freq_by_if(0, reg1011->CH2_MIDF_SW, input_freq_hz, reg1011->CH2_OUTPUT_EN);
+    input_freq_hz = (uint64_t)sys_reg.CH2_INPUT_FRE * 1000;
+    set_clk1_fre(1, input_freq_hz);
+    set_channel_link_gain(1, reg1016->CH2_GAIN);
+    set_clk2_freq_by_if(1, reg1011->CH2_MIDF_SW, input_freq_hz, reg1011->CH2_OUTPUT_EN);
+    uint32_t time_wait = RS485_BUS_IDLE_WAITTIME * 5;
+#elif defined DEVICE_FRE_CONTROL_RANGE_Q
+#endif
     while (1)
     {
-#if defined DEVICE_FRE_CONTROL_RANGE_X
-        //获取锁相源模块信息
-        if(rtu4)
+        // 获取锁相源模块信息
+        if (pll_node.channel_handle)
         {
-            int ret = modbus_rtu_excuse(rtu4, 0x01, AGILE_MODBUS_FC_READ_HOLDING_REGISTERS, 0x0000, 3, &regs);
+            ret = modbus_rtu_excuse(pll_node.channel_handle, pll_node.mb_id, AGILE_MODBUS_FC_READ_HOLDING_REGISTERS, 0x0000, 10, &regs);
             if (ret == MODBUS_RT_EOK)
             {
-                reg1010->PLL_REF = regs[0] & 0x0003;
-                reg1010->PLL_LOCK = READ_BIT(regs[0], 3);
-                LOG_D("PLL temperature %.1f°", (float)regs[2] / 10);
+                pll_node_status_t pll_status;
+                float RFin_mv = 0, pll_power = 0;
+                sys_status.pll_link = RT_TRUE;
+                pll_status.val = regs[0];
+                reg1010->PLL_REF_STA= pll_status.INPUT_REF_STA;  //bit1-bit2
+                reg1010->PLL_LOCK = pll_status.PLL_LOCK;  //bit0
+                pll_node.ctrl_reg = regs[1];
+                pll_node.temperature = regs[2];
+                pll_node.version = regs[3];
+                pll_node.input_ref_vol = regs[4];
+                buffer[0] = (regs[5] << 16) | regs[6];
+                buffer[1] = (regs[7] << 16) | regs[8];
+                pll_node.freq_set = ((uint64_t)buffer[0] << 32) | buffer[1];
+                RFin_mv = (float)pll_node.input_ref_vol / 7.5; // 计算PLL参考输入信号功率
+                pll_power = 10 * log10(RFin_mv * RFin_mv / 50000);
+                LOG_D("PLL temperature %.1f,lock %d,ctrl_reg 0x%04x,input ref signal voltage %dmV(%.3f dBm) ,frequency %llu Hz", 
+                    (float)pll_node.temperature / 10, reg1010->PLL_LOCK, pll_node.ctrl_reg, pll_node.input_ref_vol, pll_power, pll_node.freq_set);
             }
             else
             {
+                sys_status.pll_link = RT_FALSE;
+                // pll_node.temperature = 0;
+                // pll_node.freq_set = 0;
+                // reg1010->PLL_REF_STA = 0;
+                // reg1010->PLL_LOCK = 0;
                 LOG_E("get pll info error %d", ret);
             }
         }
-        // 获取通道1本振1信息
-        if(rtu2)
-        {
-            int ret = modbus_rtu_excuse(rtu2, 0x01, AGILE_MODBUS_FC_READ_HOLDING_REGISTERS, 0x0000, 5, &regs);
-            if (ret == MODBUS_RT_EOK)
-            {
-                reg1010->CH1_CLK1_LOCK = READ_BIT(regs[0], 1);
-                LOG_D("ch1 clk1 temperature %.1f°", (float)regs[2] / 10);
-                uint32_t fre = regs[3] << 16 | regs[4];
-                LOG_D("ch1 clk1 frequency %.3f MHz", (float)regs[3] / 1000);
-            }
-            else
-            {
-                LOG_E("get ch1 local osc1 info error %d", ret);
-            }
-        }
-
-        // //获取通道1本振2信息
-        // ret = modbus_rtu_excuse(rtu2, 0x02, AGILE_MODBUS_FC_READ_HOLDING_REGISTERS, 0x0000, 5, &regs);
-        // if(ret == MODBUS_RT_EOK)
-        // {
-        //     for(int i = 0; i < 5; i++)
-        //     {
-        //         LOG_D("reg%d:%d",i, regs[i]);
-        //     }
-        // }
-        // else
-        // {
-        //     LOG_E("get ch1 local osc2 info error %d",ret);
-        // }
-        // //获取通道1 变频器1信息
-        // ret = modbus_rtu_excuse(rtu2, 0x03, AGILE_MODBUS_FC_READ_HOLDING_REGISTERS, 0x0000, 5, &regs);
-        // if(ret == MODBUS_RT_EOK)
-        // {
-        //     for(int i = 0; i < 5; i++)
-        //     {
-        //         LOG_D("reg%d:%d",i, regs[i]);
-        //     }
-        // }
-        // else
-        // {
-        //     LOG_E("get ch1 frequency converter1 info error %d",ret);
-        // }
-        // //获取通道1 变频器2信息
-        // ret = modbus_rtu_excuse(rtu2, 0x04, AGILE_MODBUS_FC_READ_HOLDING_REGISTERS, 0x0000, 5, &regs);
-        // if(ret == MODBUS_RT_EOK)
-        // {
-        //     for(int i = 0; i < 5; i++)
-        //     {
-        //         LOG_D("reg%d:%d",i, regs[i]);
-        //     }
-        // }
-        // else
-        // {
-        //     LOG_E("get ch1 frequency converter2 info error %d",ret);
-        // }
-        // //获取通道2本振1信息
-        // ret = modbus_rtu_excuse(rtu3, 0x01, AGILE_MODBUS_FC_READ_HOLDING_REGISTERS, 0x0000, 5, &regs);
-        // if(ret == MODBUS_RT_EOK)
-        // {
-        //     for(int i = 0; i < 5; i++)
-        //     {
-        //         LOG_D("reg%d:%d",i, regs[i]);
-        //     }
-        // }
-        // else
-        // {
-        //     LOG_E("get ch1 local osc1 info error %d",ret);
-        // }
-        // //获取通道2本振2信息
-        // ret = modbus_rtu_excuse(rtu3, 0x02, AGILE_MODBUS_FC_READ_HOLDING_REGISTERS, 0x0000, 5, &regs);
-        // if(ret == MODBUS_RT_EOK)
-        // {
-        //     for(int i = 0; i < 5; i++)
-        //     {
-        //         LOG_D("reg%d:%d",i, regs[i]);
-        //     }
-        // }
-        // else
-        // {
-        //     LOG_E("get ch1 local osc2 info error %d",ret);
-        // }
-        // //获取通道2 变频器1信息
-        // ret = modbus_rtu_excuse(rtu3, 0x03, AGILE_MODBUS_FC_READ_HOLDING_REGISTERS, 0x0000, 5, &regs);
-        // if(ret == MODBUS_RT_EOK)
-        // {
-        //     for(int i = 0; i < 5; i++)
-        //     {
-        //         LOG_D("reg%d:%d",i, regs[i]);
-        //     }
-        // }
-        // else
-        // {
-        //     LOG_E("get ch1 frequency converter1 info error %d",ret);
-        // }
-        // //获取通道2 变频器2信息
-        // ret = modbus_rtu_excuse(rtu3, 0x04, AGILE_MODBUS_FC_READ_HOLDING_REGISTERS, 0x0000, 5, &regs);
-        // if(ret == MODBUS_RT_EOK)
-        // {
-        //     for(int i = 0; i < 5; i++)
-        //     {
-        //         LOG_D("reg%d:%d",i, regs[i]);
-        //     }
-        // }
-        // else
-        // {
-        //     LOG_E("get ch1 frequency converter2 info error %d",ret);
-        // }
+        rt_thread_mdelay(time_wait);
+#if defined DEVICE_FRE_CONTROL_RANGE_X
 
 #elif defined DEVICE_FRE_CONTROL_RANGE_KA
+        //获取本振信息
+        for(int i = 0; i < 2; i++)
+        {
+            for (int j = 0; j < 2; j++)
+            {
+                if (clk_node[i][j].channel_handle)
+                {
+                    ret = modbus_rtu_excuse(clk_node[i][j].channel_handle, clk_node[i][j].mb_id, AGILE_MODBUS_FC_READ_HOLDING_REGISTERS, 0x0000, 10, &regs);
+                    if (ret == MODBUS_RT_EOK)
+                    {
+                        clk_node[i][j].status = regs[0];
+                        clk_node[i][j].ctrl_reg = regs[1];
+                        clk_node[i][j].temperature = regs[2];
+                        clk_node[i][j].version = regs[3];
+                        clk_node[i][j].spur_param = regs[4];
+                        buffer[0] = (regs[5] << 16) | regs[6]; 
+                        buffer[1] = (regs[7] << 16) | regs[8];
+                        clk_node[i][j].freq_set = ((uint64_t)buffer[0] << 32) | buffer[1];
+                        LOG_D("ch%d clk%d temperature %.1f ,lock %d,frequency %lluHz,version %d,spur param 0x%04x,ctrl_reg 0x%04x",
+                             i+1, j+1, (float)clk_node[i][j].temperature / 10, (clk_node[i][j].status & 0x01), clk_node[i][j].freq_set, clk_node[i][j].version, clk_node[i][j].spur_param, clk_node[i][j].ctrl_reg);
+                    }
+                    else
+                    {
+                        // clk_node[i][j].temperature = 0;
+                        // clk_node[i][j].freq_set = 0;
+                        LOG_E("get ch%d clk%d info error %d", i+1, j+1, ret);
+                    }
+                    switch (i * 2 + j)
+                    {
+                    case 0:
+                        if(ret == MODBUS_RT_EOK)
+                        {
+                            sys_status.ch1_clk1_link = RT_TRUE;
+                            reg1010->CH1_CLK1_LOCK = (clk_node[i][j].status & 0x01);
+                        }
+                        else
+                        {
+                            sys_status.ch1_clk1_link = RT_FALSE;
+                            reg1010->CH1_CLK1_LOCK = 0;
+                        }
+                        break;
+                    case 1:
+                        if(ret == MODBUS_RT_EOK)
+                        {
+                            sys_status.ch1_clk2_link = RT_TRUE;
+                            reg1010->CH1_CLK2_LOCK = (clk_node[i][j].status & 0x01);
+                        }
+                        else
+                        {
+                            sys_status.ch1_clk2_link = RT_FALSE;
+                            reg1010->CH1_CLK2_LOCK = 0;
+                        }
+                        break;
+                    case 2:
+                        if(ret == MODBUS_RT_EOK)
+                        {
+                            sys_status.ch2_clk1_link = RT_TRUE;
+                            reg1010->CH2_CLK1_LOCK = (clk_node[i][j].status & 0x01);
+                        }
+                        else
+                        {
+                            sys_status.ch2_clk1_link = RT_FALSE;
+                            reg1010->CH2_CLK1_LOCK = 0;
+                        }
+                        break;
+                    case 3:
+                        if(ret == MODBUS_RT_EOK)
+                        {
+                            sys_status.ch2_clk2_link = RT_TRUE;
+                            reg1010->CH2_CLK2_LOCK = (clk_node[i][j].status & 0x01);
+                        }
+                        else
+                        {
+                            sys_status.ch2_clk2_link = RT_FALSE;
+                            reg1010->CH2_CLK2_LOCK = 0;
+                        }
+                        break;
+                    default:
+                        break;
+                    }
+
+                }
+                rt_thread_mdelay(time_wait);
+            }
+        }
+        //获取变频器信息
+        for(int i = 0; i < 2; i++)
+        {
+            if (frecov_node[i].channel_handle)
+            {
+                ret = modbus_rtu_excuse(frecov_node[i].channel_handle, frecov_node[i].mb_id, AGILE_MODBUS_FC_READ_HOLDING_REGISTERS, 0x0000, 10, &regs);
+                if (ret == MODBUS_RT_EOK)
+                {
+                    frecov_node[i].status = regs[0];
+                    frecov_node[i].ctrl_reg = regs[1];
+                    frecov_node[i].temperature = regs[2];
+                    frecov_node[i].version = regs[3];
+                    frecov_node[i].decay_value = regs[4];
+                    LOG_D("frecov ch%d temperature %.1f,ctrl_reg 0x%04x,decay value %d,version %d", i+1, 
+                        (float)frecov_node[i].temperature / 10, frecov_node[i].ctrl_reg, frecov_node[i].decay_value,frecov_node[i].version);
+                }
+                else
+                {
+                    LOG_E("get frecov ch%d info error %d", i+1, ret);
+                }
+            }
+            rt_thread_mdelay(time_wait);
+        }
 #elif defined DEVICE_FRE_CONTROL_RANGE_Q
 #endif
-        rt_thread_mdelay(500);
     }
 }
 
+//保存网络参数
+rt_err_t save_net_args(void)
+{
+    char *netdev_name = "e0";
+    struct netdev *netdev = RT_NULL;
+    ip_addr_t addr;
+
+    netdev = netdev_get_by_name(netdev_name);
+    if (netdev == RT_NULL)
+    {
+        LOG_E("bad network interface device name(%s).", netdev_name);
+        return -RT_ERROR;
+    }
+    sys_reg.IP = netdev->ip_addr.addr;
+    sys_reg.IP_MASK = netdev->netmask.addr;
+    sys_reg.GATE_WAY = netdev->gw.addr;
+    return save_sys_regs();
+}
+MSH_CMD_EXPORT_ALIAS(save_net_args, save_net_args, save network args);
+
 static int dtu_init(void)
 {
-    LOG_I("test float data %.3f", 390.223);
-    env_kvdb_init();
-    // struct netdev *dev = netdev_get_by_name(NET_DEV_NAME); // lwip设置网络连接callback
-    // if (dev && netdev_is_link_up(dev))
-    // {
-    //     tsu = modbus_tcp_slave_for_udp_init(NULL, 502);
-    //     netdev_set_status_callback(dev, netdev_status_callback);
-    // }
-    // rtu1 = modbus_rtu_slave_init(COM2_PORT_NAME);  // 屏幕
-    // // rtu2 = modbus_rtu_master_init(COM2_PORT_NAME); // 通道1  --本振 + 变频
-    // // rtu3 = modbus_rtu_master_init(COM3_PORT_NAME); //通道2
-    // rtu4 = modbus_rtu_master_init(COM4_PORT_NAME); // 通道3  -- 锁相源
-    // rt_thread_t thread = rt_thread_create("dtu", dtu_thread_entry, RT_NULL, 4096, MODBUS_THREAD_PRIO + 1, 20);
-    // if (thread != RT_NULL)
-    //     rt_thread_startup(thread);
+    LOG_D("firmware version %d", DTU_FIRMWARE_VERSION);
+    char ip[IP4ADDR_STRLEN_MAX + 1] = {0};
+    char ip_mask[IP4ADDR_STRLEN_MAX + 1] = {0};
+    char gate_way[IP4ADDR_STRLEN_MAX + 1] = {0};
+    inet_ntoa_r(sys_reg.IP, ip, IP4ADDR_STRLEN_MAX);
+    inet_ntoa_r(sys_reg.IP_MASK, ip_mask, IP4ADDR_STRLEN_MAX);
+    inet_ntoa_r(sys_reg.GATE_WAY, gate_way, IP4ADDR_STRLEN_MAX);
+    netdev_set_if("e0", ip, gate_way, ip_mask);
+    tsu = modbus_tcp_slave_for_udp_init(NULL, 502);
+    rtu1 = modbus_rtu_slave_init(COM1_PORT_NAME);  // 屏幕
+    rtu2 = modbus_rtu_master_init(COM2_PORT_NAME); // 通道2  -- 锁相源
+    pll_node.channel_handle = rtu2;
+    rtu3 = modbus_rtu_master_init(COM3_PORT_NAME); // 通道1  --本振 + 变频
+    rtu4 = modbus_rtu_master_init(COM4_PORT_NAME); // 通道2  --本振 + 变频
+    clk_node[0][0].channel_handle = rtu3;
+    clk_node[0][1].channel_handle = rtu3;
+    frecov_node[0].channel_handle = rtu3;
+    clk_node[1][0].channel_handle = rtu4;
+    clk_node[1][1].channel_handle = rtu4;
+    frecov_node[1].channel_handle = rtu4;
+    rt_thread_t thread = rt_thread_create("dtu", dtu_thread_entry, RT_NULL, 4096, MODBUS_THREAD_PRIO + 1 , 100);
+    if (thread != RT_NULL)
+        rt_thread_startup(thread);
     return 0;
 }
 INIT_FS_EXPORT(dtu_init);

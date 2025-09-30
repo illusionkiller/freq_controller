@@ -7,9 +7,9 @@
  * Date           Author            Notes
  * 2018-12-07     balanceTWK        first version
  */
-
-#ifdef RT_USING_WDT
 #include "drv_config.h"
+#ifdef RT_USING_WDT
+
 
 //#define DRV_DEBUG
 #define LOG_TAG             "drv.wdt"

@@ -7,12 +7,8 @@
  * Date           Author       Notes
  */
 
-#include <board.h>
-#include <rtthread.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <rtdevice.h>
 
+#include <drv_usart_v2.h>
 
 #define DBG_TAG "COM.TEST"
 #define DBG_LVL DBG_LOG
@@ -45,7 +41,7 @@ static rt_err_t com_cb(rt_device_t dev, rt_size_t size)
     return RT_EOK;
 }
 
-static int rtt_uart_receive(rt_device_t serial, uint8_t *buf, int bufsz, int timeout, int bytes_timeout)
+static int rtt_uart_receive1(rt_device_t serial, uint8_t *buf, int bufsz, int timeout, int bytes_timeout)
 {
     int len = 0;
     while (1)
@@ -78,11 +74,12 @@ static void com_thread_entry(void *param)
     uint8_t ctx_send_buf[256] = {0};
     while (1)
     {
-        int len = rtt_uart_receive(com, ctx_read_buf, sizeof(ctx_read_buf), MB_SLAVE_RESPONSE_TIMEOUT, 10);
+        int len = rtt_uart_receive1(com, ctx_read_buf, sizeof(ctx_read_buf), MB_SLAVE_RESPONSE_TIMEOUT, 10);
         if (len > 0)
         {
             LOG_I("recv data len: %d", len);
-            rt_device_write(com, 0, &ctx_read_buf, len);
+            LOG_D("recv data: %s", ctx_read_buf);
+            // rt_device_write(com, 0, &ctx_read_buf, len);
         }
         else
         {
@@ -125,3 +122,11 @@ static int com1_init(void)
     return ret;
 }
 INIT_APP_EXPORT(com1_init);
+
+static int rs485_echo_test(void)
+{
+    uint8_t ctx_read_buf[] = "hellow_world123";
+    rt_device_write(com, 0, &ctx_read_buf, rt_strlen(ctx_read_buf));
+    return 0;
+}
+MSH_CMD_EXPORT_ALIAS(rs485_echo_test, rs485_echo, rs485_echo_test);
