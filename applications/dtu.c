@@ -146,10 +146,40 @@ typedef struct
     uint16_t version;
     uint16_t decay_value;
 } frecov_node_attr_t;
+//二次变频频率组合定义
+typedef struct
+{
+    uint64_t IF_freq; // Hz
+    uint64_t f1_2[2];      // Hz
+} Combo;
+//衰减器io映射定义
+typedef union
+{
+    struct
+    {
+        uint16_t p00 : 1;
+        uint16_t p01_06 : 6; // gs5801_1 ct1-ct6
+        uint16_t p07 : 1;
+        uint16_t p10 : 1;
+        uint16_t p11_p16 : 6; // gs5801_2 ct1-ct6
+        uint16_t p17 : 1;
+    };
+    uint16_t val;
+} ct_io_map_t;
 
 #define REG_NUM (128)
 #define LWREG_START_ADDR 0X1000
 #define LWREG_END_ADDR (LWREG_START_ADDR + REG_NUM)
+#define RS485_BUS_IDLE_WAITTIME 100 // ms
+#define PFD_OFFSET 100000000        // 100 MHz
+#define DEFAULT_PLL_MB_ID 1    // 锁相源模块485通信地址
+#define DEFAULT_CH1_CLK1_MB_ID 1
+#define DEFAULT_CH1_CLK2_MB_ID 2
+#define DEFAULT_CH1_FRECOV_MB_ID 3
+#define DEFAULT_CH2_CLK1_MB_ID 1
+#define DEFAULT_CH2_CLK2_MB_ID 2
+#define DEFAULT_CH2_FRECOV_MB_ID 3
+
 static uint16_t modbus_regs[REG_NUM] = {0};
 static rtu_modbus_device_t rtu1 = RT_NULL;
 static rtu_modbus_device_t rtu2 = RT_NULL;
@@ -160,33 +190,17 @@ extern sys_reg_t sys_reg;
 static sys_status_t sys_status = {0};
 static reg1010_t node_status = {0};  //外设模块状态
 static sys_ctrl_t sys_ctrl = {0};
-#define RS485_BUS_IDLE_WAITTIME  100 //ms
-
-#if defined DEVICE_FRE_CONTROL_RANGE_KA
-#define BASE_IF1_FREQ 6000000000   // 6000M
-#define FREQ_MULTI_FACTOR  4
-#define CLK_FREQ_OFFSET  0
-#define CLK_FREQ_STEP   1000000
-#define INPUT_FREQ_START   17000000000 //17G
-#define DEFAULT_PLL_MB_ID   1
-#define DEFAULT_CH1_CLK1_MB_ID   1
-#define DEFAULT_CH1_CLK2_MB_ID   2
-#define DEFAULT_CH1_FRECOV_MB_ID   3
-
-#define DEFAULT_CH2_CLK1_MB_ID   1
-#define DEFAULT_CH2_CLK2_MB_ID   2
-#define DEFAULT_CH2_FRECOV_MB_ID   3
 
 static frecov_node_attr_t frecov_node[2] = {
-        {
-            .mb_id = DEFAULT_CH1_FRECOV_MB_ID,
-        },
-        {
-            .mb_id = DEFAULT_CH2_FRECOV_MB_ID,
-        },
+    {
+        .mb_id = DEFAULT_CH1_FRECOV_MB_ID,
+    },
+    {
+        .mb_id = DEFAULT_CH2_FRECOV_MB_ID,
+    },
 };
 static pll_node_attr_t pll_node = {
-        .mb_id = DEFAULT_PLL_MB_ID,
+    .mb_id = DEFAULT_PLL_MB_ID,
 };
 static clk_node_attr_t clk_node[2][2] = {
     {
@@ -204,16 +218,98 @@ static clk_node_attr_t clk_node[2][2] = {
         {
             .mb_id = DEFAULT_CH2_CLK2_MB_ID,
         },
-    }
-};
+    }};
 extern rt_device_t pcf8575_dev[2];
 
-#elif defined DEVICE_FRE_CONTROL_RANGE_Q
-
+#if defined DEVICE_FRE_CONTROL_RANGE_KA
+#define FREQ_MULTI_FACTOR  4
+#define INPUT_FREQ_START   17000000000 //17G
+#define INPUT_FREQ_END     28000000000   // 17G
+#define IF_MIN 5980000000ULL             // 1中频范围 定义
+#define IF_FREQ 6000000000ULL      
+#define IF_MAX 6020000000ULL     
+#define PFD1_MIN 4000000         //Hz,距离PFD1频率的最小距离,优化杂散
+#define PFD2_MIN 5000000       
+static uint64_t IF2_fre_table[] = {720000000, 1200000000, 1500000000, 1800000000};
 #elif defined DEVICE_FRE_CONTROL_RANGE_X
+#define FREQ_MULTI_FACTOR 1
+#define INPUT_FREQ_START 7000000000 // 7G
+#define INPUT_FREQ_END 9000000000   // 9G
+#define IF_MIN 3080000000ULL         // 1中频范围 定义
+#define IF_FREQ 3100000000ULL       
+#define IF_MAX 3120000000ULL         
+#define PFD1_MIN 10000000          
+#define PFD2_MIN 15000000
+static uint64_t IF2_fre_table[] = {720000000, 1200000000};
+#elif defined DEVICE_FRE_CONTROL_RANGE_Q
 
 #endif
 
+static bool check_frequency_condition1(uint64_t frequency)
+{
+    uint64_t remainder = frequency % PFD_OFFSET;
+    if (remainder < PFD1_MIN || (PFD_OFFSET - remainder) < PFD1_MIN)
+    {
+        return false;
+    }
+    return true;
+}
+
+static bool check_frequency_condition2(uint64_t frequency)
+{
+    uint64_t remainder = frequency % PFD_OFFSET;
+    if (remainder < PFD2_MIN || (PFD_OFFSET - remainder) < PFD2_MIN)
+    {
+        return false;
+    }
+    return true;
+}
+// 查找满足条件的组合，写入 combos，返回写入的数量
+static size_t find_valid_combinations(uint64_t input_freq, Combo *combos, size_t max_combos, uint64_t IF2_freq)
+{
+    size_t count = 0;
+    for (uint64_t IF1_freq = IF_MIN; IF1_freq <= IF_MAX; IF1_freq += 1000000ULL)
+    { // 步进1 MHz
+        uint64_t f1, f2;
+        f1 = (input_freq + IF1_freq) / FREQ_MULTI_FACTOR;
+        f2 = IF1_freq + IF2_freq;
+        if (check_frequency_condition1(f1) && check_frequency_condition2(f2))
+        {
+            if (count < max_combos)
+            {
+                combos[count].IF_freq = IF1_freq;
+                combos[count].f1_2[0] = f1;
+                combos[count].f1_2[1] = f2;
+                count++;
+            }
+        }
+    }
+    return count;
+}
+// 返回最接近 target 的 IF 的索引 
+static size_t find_closest_if_index(const Combo *combos, size_t count, uint64_t target)
+{
+    if (count == 0)
+    {
+        return SIZE_MAX;
+    }
+    size_t closest_idx = 0;
+    uint64_t first = combos[0].IF_freq;
+    uint64_t best_diff = (first > target) ? (first - target) : (target - first);
+
+    for (size_t i = 1; i < count; ++i)
+    {
+        uint64_t diff = (combos[i].IF_freq > target)
+                       ? (combos[i].IF_freq - target)
+                       : (target - combos[i].IF_freq);
+        if (diff < best_diff)
+        {
+            best_diff = diff;
+            closest_idx = i;
+        }
+    }
+    return closest_idx;
+}
 //pll参考输入信号选择
 static rt_err_t pll_inputref_select(uint8_t ref_sel)
 {
@@ -232,60 +328,89 @@ static rt_err_t pll_inputref_select(uint8_t ref_sel)
     }
     return RT_EOK;
 }
-// 根据输入频率配置本振1节点频率
-static rt_err_t set_clk1_fre(uint8_t channel_idx, uint64_t input_freq_hz)
+// 根据输入频率配置通道
+static rt_err_t channel_fre_config(uint8_t channel_idx, uint64_t input_freq_hz, uint8_t if_idx, rt_bool_t channel_output_en)
 {
-    rt_thread_mdelay(RS485_BUS_IDLE_WAITTIME); // 等待总线空闲
     int ret = 0;
-#if defined DEVICE_FRE_CONTROL_RANGE_X
-
-#elif defined DEVICE_FRE_CONTROL_RANGE_KA
-    if(channel_idx > 1) return -RT_ERROR;
-    if (input_freq_hz < INPUT_FREQ_START)
+    if (channel_idx > 1)
         return -RT_ERROR;
-    //根据偏移和步长计算频率所属段
-    uint32_t fre_segment = (input_freq_hz - INPUT_FREQ_START) / (CLK_FREQ_STEP * FREQ_MULTI_FACTOR);
-    //计算段首频率
-    uint64_t fre = INPUT_FREQ_START +  fre_segment * CLK_FREQ_STEP * FREQ_MULTI_FACTOR;
-    uint64_t clk_fre = (fre + BASE_IF1_FREQ) / 4 + CLK_FREQ_OFFSET;
-    if (clk_node[channel_idx][0].freq_set != clk_fre)
+    if (input_freq_hz < INPUT_FREQ_START || input_freq_hz > INPUT_FREQ_END)
+        return -RT_ERROR;
+    if (if_idx > sizeof(IF2_fre_table) / sizeof(IF2_fre_table[0]))
+        return -RT_ERROR;
+    Combo combos[64] = {0};
+    size_t closest_idx = 0;
+    uint64_t IF2_fre = IF2_fre_table[if_idx];
+    size_t count = find_valid_combinations(input_freq_hz, combos, sizeof(combos) / sizeof(combos[0]), IF2_fre);
+    if (count > 0)
     {
-        uint16_t regs[4] = {0};
-        regs[0] = ((clk_fre >> 48) & 0XFFFF);
-        regs[1] = ((clk_fre >> 32) & 0XFFFF);
-        regs[2] = ((clk_fre >> 16) & 0XFFFF);
-        regs[3] = ((clk_fre >> 0) & 0XFFFF);
-        ret = modbus_rtu_excuse(clk_node[channel_idx][0].channel_handle, clk_node[channel_idx][0].mb_id, AGILE_MODBUS_FC_WRITE_MULTIPLE_REGISTERS, 0x0005, 4, &regs);
+        // LOG_D("Valid frequency combinations for input frequency %llu Hz:", input_freq_hz);
+        // for (size_t i = 0; i < count; ++i)
+        // {
+        //     // 输出统一为 Hz
+        //     LOG_D("IF_freq: %llu Hz, f1: %llu Hz, f2: %llu Hz",
+        //           combos[i].IF_freq, combos[i].f1_2[0], combos[i].f1_2[1]);
+        // }
+        // 找到最接近 IF_FREQ 的 IF（调用封装函数）
+        closest_idx = find_closest_if_index(combos, count, IF_FREQ);
+        LOG_D("Closest IF_freq to %llu Hz: %llu Hz, f1: %llu Hz, f2: %llu Hz",
+              IF_FREQ, combos[closest_idx].IF_freq, combos[closest_idx].f1_2[0], combos[closest_idx].f1_2[1]);
+    }
+    else
+    {
+        LOG_E("No valid combinations found for input frequency %llu Hz.", input_freq_hz);
+        return -RT_ERROR;
+    }
+#if defined DEVICE_FRE_CONTROL_RANGE_X  || defined DEVICE_FRE_CONTROL_RANGE_KA
+    // 配置本振1和本振2节点频率
+    for (int i = 0; i < 2; i++)
+    {
+        if (clk_node[channel_idx][i].freq_set != combos[closest_idx].f1_2[i])
+        {
+            uint16_t regs[4] = {0};
+            regs[0] = ((combos[closest_idx].f1_2[i] >> 48) & 0XFFFF);
+            regs[1] = ((combos[closest_idx].f1_2[i] >> 32) & 0XFFFF);
+            regs[2] = ((combos[closest_idx].f1_2[i] >> 16) & 0XFFFF);
+            regs[3] = ((combos[closest_idx].f1_2[i] >> 0) & 0XFFFF);
+            ret = modbus_rtu_excuse(clk_node[channel_idx][i].channel_handle, clk_node[channel_idx][i].mb_id, AGILE_MODBUS_FC_WRITE_MULTIPLE_REGISTERS, 0x0005, 4, &regs);
+            if (ret != MODBUS_RT_EOK)
+            {
+                LOG_E("set channel%d clk%d frequency %llu failed", channel_idx + 1, i + 1, combos[closest_idx].f1_2[i]);
+                return -RT_ERROR;
+            }
+            LOG_D("set channel%d clk%d frequency %llu success", channel_idx + 1, i + 1, combos[closest_idx].f1_2[i]);
+            clk_node[channel_idx][i].freq_set = combos[closest_idx].f1_2[i];
+            rt_thread_mdelay(RS485_BUS_IDLE_WAITTIME); // 等待总线空闲
+        }
+    }
+    //使能控制
+    frecov_node_ctrl_t ctrl_reg = {0};
+    ctrl_reg.val = frecov_node[channel_idx].ctrl_reg;
+    ctrl_reg.RF_PATH_SEL = if_idx;
+    ctrl_reg.PA_LDO_EN = channel_output_en;
+    if (ctrl_reg.val != frecov_node[channel_idx].ctrl_reg)
+    {
+        ret = modbus_rtu_excuse(frecov_node[channel_idx].channel_handle, frecov_node[channel_idx].mb_id, AGILE_MODBUS_FC_WRITE_SINGLE_REGISTER, 0x0001, 1, &ctrl_reg);
         if (ret != MODBUS_RT_EOK)
         {
-            LOG_E("set channel%d clk1 frequency %llu failed", channel_idx+1, clk_fre);
+            LOG_E("set channel%d frecov failed", channel_idx);
             return -RT_ERROR;
         }
-        LOG_D("set channel%d clk2 frequency %llu success", channel_idx + 1, clk_fre);
-        clk_node[channel_idx][0].freq_set = clk_fre;
+        frecov_node[channel_idx].ctrl_reg = ctrl_reg.val;
+        LOG_I("set channel%d frecov success", channel_idx);
+        rt_thread_mdelay(RS485_BUS_IDLE_WAITTIME); // 等待总线空闲
     }
+
 #elif defined DEVICE_FRE_CONTROL_RANGE_Q
 #endif
     return RT_EOK;
 }
-
-typedef union
-{
-    struct
-    {
-        uint16_t p00 : 1;
-        uint16_t p01_06 : 6; // gs5801_1 ct1-ct6
-        uint16_t p07 : 1;
-        uint16_t p10:1;
-        uint16_t p11_p16 : 6; // gs5801_2 ct1-ct6
-        uint16_t p17 : 1;
-    };
-    uint16_t val;
-}ct_io_map_t;
+//设置通道链路增益
 static rt_err_t set_channel_link_gain(uint8_t channel_idx, uint8_t gain_value)
 {
     rt_err_t ret = RT_EOK;
 #if defined DEVICE_FRE_CONTROL_RANGE_X
+
 #elif defined DEVICE_FRE_CONTROL_RANGE_KA
     //ct1-ct6 对应bit1-bit6
     ct_io_map_t ct_map = {0};
@@ -309,72 +434,6 @@ static rt_err_t set_channel_link_gain(uint8_t channel_idx, uint8_t gain_value)
 #elif defined DEVICE_FRE_CONTROL_RANGE_Q
 #endif
     return ret;
-}
-//根据所选中频频率索引配置本振2
-static rt_err_t set_clk2_freq_by_if(uint8_t channel_idx, uint8_t if_idx, uint64_t input_freq_hz,rt_bool_t channel_output_en)
-{
-    rt_thread_mdelay(RS485_BUS_IDLE_WAITTIME); // 等待总线空闲
-    rt_err_t ret = 0;
-    uint64_t clk_fre = 0, IF = 0;
-#if defined DEVICE_FRE_CONTROL_RANGE_X
-#elif defined(DEVICE_FRE_CONTROL_RANGE_KA)
-    if ((channel_idx > 1))
-        return -RT_ERROR;
-    if (clk_node[channel_idx][0].freq_set * 4 <= input_freq_hz) return -RT_ERROR;
-    IF = clk_node[channel_idx][0].freq_set * 4 - input_freq_hz;
-    // 计算前级输入频率
-    switch (if_idx)
-    {
-    case 0:
-        clk_fre = IF + 720000000;
-        break;
-    case 1:
-        clk_fre = IF + 1200000000;
-        break;
-    case 2:
-        clk_fre = IF + 1500000000;
-        break;
-    case 3:
-        clk_fre = IF + 1800000000;
-        break;
-    default:
-        break;
-    }
-    if (clk_node[channel_idx][1].freq_set != clk_fre)
-    {
-        uint16_t regs[4] = {0};
-        regs[0] = ((clk_fre >> 48) & 0XFFFF);    
-        regs[1] = ((clk_fre >> 32) & 0XFFFF);
-        regs[2] = ((clk_fre >> 16) & 0XFFFF);
-        regs[3] = ((clk_fre >> 0) & 0XFFFF);
-        ret = modbus_rtu_excuse(clk_node[channel_idx][1].channel_handle, clk_node[channel_idx][1].mb_id, AGILE_MODBUS_FC_WRITE_MULTIPLE_REGISTERS, 0x0005, 4, &regs);
-        if (ret != MODBUS_RT_EOK)
-        {
-            LOG_E("set channel%d clk2 frequency %llu failed", channel_idx+1, clk_fre);
-            return -RT_ERROR;
-        }
-        LOG_I("set channel%d clk2 frequency %llu success", channel_idx+1, clk_fre);
-        clk_node[channel_idx][1].freq_set = clk_fre;
-    }
-    rt_thread_mdelay(RS485_BUS_IDLE_WAITTIME); // 等待总线空闲
-    frecov_node_ctrl_t ctrl_reg;
-    ctrl_reg.val = frecov_node[channel_idx].ctrl_reg;
-    ctrl_reg.RF_PATH_SEL = if_idx;
-    ctrl_reg.PA_LDO_EN = channel_output_en;
-    if (ctrl_reg.val != frecov_node[channel_idx].ctrl_reg)
-    {
-        ret = modbus_rtu_excuse(frecov_node[channel_idx].channel_handle, frecov_node[channel_idx].mb_id, AGILE_MODBUS_FC_WRITE_SINGLE_REGISTER, 0x0001, 1, &ctrl_reg);
-        if (ret != MODBUS_RT_EOK)
-        {
-            LOG_E("set channel%d frecov failed", channel_idx);
-            return -RT_ERROR;
-        }
-        frecov_node[channel_idx].ctrl_reg = ctrl_reg.val;
-        LOG_I("set channel%d frecov success", channel_idx);
-    }
-#elif defined DEVICE_FRE_CONTROL_RANGE_Q
-#endif
-    return RT_EOK;
 }
 
 rt_err_t mb_fun_read_holding_registers(int addr, unsigned char reg_count, uint16_t *reg_buffer)
@@ -531,36 +590,45 @@ rt_err_t mb_fun_write_registers(int addr, unsigned char reg_count, uint16_t *reg
                 sys_reg_temp.LW1011 = reg_buffer[addr_index - start_addr_index];
                 reg1011_t *reg = (reg1011_t *)&sys_reg_temp.LW1011;
                 uint64_t input_freq_hz = 0;
-                if(sys_status.pll_link == RT_TRUE)
+                if (sys_status.pll_link == RT_TRUE)
                 {
                     pll_inputref_select(reg->PLL_INPUT_SEL);
                 }
-                if (sys_status.ch1_clk2_link == RT_TRUE)
+                if (sys_status.ch1_clk1_link == RT_TRUE && sys_status.ch1_clk2_link == RT_TRUE)
                 {
-                    input_freq_hz = (uint64_t)sys_reg.CH1_INPUT_FRE * 1000;
-                    set_clk2_freq_by_if(0, reg->CH1_MIDF_SW, input_freq_hz, reg->CH1_OUTPUT_EN);
+                    input_freq_hz  = (uint64_t)sys_reg_temp.CH1_INPUT_FRE * 1000;
+                    channel_fre_config(0, input_freq_hz,reg->CH1_MIDF_SW,reg->CH1_OUTPUT_EN);
                 }
-                if (sys_status.ch2_clk2_link == RT_TRUE)
+                if (sys_status.ch2_clk1_link == RT_TRUE && sys_status.ch2_clk2_link == RT_TRUE)
                 {
-                    input_freq_hz = (uint64_t)sys_reg.CH2_INPUT_FRE * 1000;
-                    set_clk2_freq_by_if(1, reg->CH2_MIDF_SW, input_freq_hz, reg->CH2_OUTPUT_EN);
+                    input_freq_hz = (uint64_t)sys_reg_temp.CH2_INPUT_FRE * 1000;
+                    channel_fre_config(1, input_freq_hz,reg->CH2_MIDF_SW,reg->CH2_OUTPUT_EN);
                 }
+                
             }
             addr_index += 1;
             break;
         case 0x1012:
             {
                 sys_reg_temp.CH1_INPUT_FRE = (reg_buffer[addr_index - start_addr_index] << 16) | reg_buffer[addr_index - start_addr_index + 1];
-                uint64_t input_freq_hz = (uint64_t)sys_reg.CH2_INPUT_FRE * 1000;
-                set_clk1_fre(0, input_freq_hz);
+                if (sys_status.ch1_clk1_link == RT_TRUE && sys_status.ch1_clk2_link == RT_TRUE)
+                {
+                    reg1011_t *reg = (reg1011_t *)&sys_reg_temp.LW1011;
+                    uint64_t input_freq_hz = (uint64_t)sys_reg_temp.CH1_INPUT_FRE * 1000;
+                    channel_fre_config(0, input_freq_hz, reg->CH1_MIDF_SW, reg->CH1_OUTPUT_EN);
+                }
             }
             addr_index += 2;
             break;
         case 0x1014:
             {
                 sys_reg_temp.CH2_INPUT_FRE = (reg_buffer[addr_index - start_addr_index] << 16) | reg_buffer[addr_index - start_addr_index + 1];
-                uint64_t input_freq_hz = (uint64_t)sys_reg.CH2_INPUT_FRE * 1000;
-                set_clk1_fre(1, input_freq_hz);
+                if (sys_status.ch2_clk1_link == RT_TRUE && sys_status.ch2_clk2_link == RT_TRUE)
+                {
+                    reg1011_t *reg = (reg1011_t *)&sys_reg_temp.LW1011;
+                    uint64_t input_freq_hz = (uint64_t)sys_reg_temp.CH2_INPUT_FRE * 1000;
+                    channel_fre_config(1, input_freq_hz, reg->CH2_MIDF_SW, reg->CH2_OUTPUT_EN);
+                }
             }
             addr_index += 2;
             break;
@@ -577,11 +645,11 @@ rt_err_t mb_fun_write_registers(int addr, unsigned char reg_count, uint16_t *reg
             addr_index++;
             break;
         }
-        if(rt_memcmp(&sys_reg, &sys_reg_temp, sizeof(sys_reg)) != 0)
-        {
-            sys_reg = sys_reg_temp;
-            save_sys_regs();
-        }
+    }
+    if (rt_memcmp(&sys_reg, &sys_reg_temp, sizeof(sys_reg)) != 0)
+    {
+        sys_reg = sys_reg_temp;
+        save_sys_regs();
     }
     return ret;
 }
@@ -753,13 +821,11 @@ static void dtu_thread_entry(void *parameter)
     rt_thread_mdelay(5000); // 等待外设模块上电稳定//根据存储的外设配置配置外设
     pll_inputref_select( reg1011->PLL_INPUT_SEL);
     uint64_t input_freq_hz = (uint64_t)sys_reg.CH1_INPUT_FRE * 1000;
-    set_clk1_fre(0, input_freq_hz);
+    channel_fre_config(0, input_freq_hz, reg1011->CH1_MIDF_SW, reg1011->CH1_OUTPUT_EN);
     set_channel_link_gain(0, reg1016->CH1_GAIN);
-    set_clk2_freq_by_if(0, reg1011->CH2_MIDF_SW, input_freq_hz, reg1011->CH2_OUTPUT_EN);
     input_freq_hz = (uint64_t)sys_reg.CH2_INPUT_FRE * 1000;
-    set_clk1_fre(1, input_freq_hz);
+    channel_fre_config(1, input_freq_hz, reg1011->CH2_MIDF_SW, reg1011->CH2_OUTPUT_EN);
     set_channel_link_gain(1, reg1016->CH2_GAIN);
-    set_clk2_freq_by_if(1, reg1011->CH2_MIDF_SW, input_freq_hz, reg1011->CH2_OUTPUT_EN);
     uint32_t time_wait = RS485_BUS_IDLE_WAITTIME * 5;
 #elif defined DEVICE_FRE_CONTROL_RANGE_Q
 #endif
@@ -945,7 +1011,7 @@ static int dtu_init(void)
     inet_ntoa_r(sys_reg.IP, ip, IP4ADDR_STRLEN_MAX);
     inet_ntoa_r(sys_reg.IP_MASK, ip_mask, IP4ADDR_STRLEN_MAX);
     inet_ntoa_r(sys_reg.GATE_WAY, gate_way, IP4ADDR_STRLEN_MAX);
-    netdev_set_if("e0", ip, gate_way, ip_mask);
+
     tsu = modbus_tcp_slave_for_udp_init(NULL, 502);
     rtu1 = modbus_rtu_slave_init(COM1_PORT_NAME);  // 屏幕
     rtu2 = modbus_rtu_master_init(COM2_PORT_NAME); // 通道2  -- 锁相源

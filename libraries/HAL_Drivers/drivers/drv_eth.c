@@ -183,7 +183,7 @@ static rt_err_t rt_stm32_eth_init(rt_device_t dev)
         regvalue |= PHY_AUTO_NEGOTIATION_MASK;
         HAL_ETH_WritePHYRegister(&EthHandle, PHY_ADDR, PHY_BASIC_CONTROL_REG, regvalue);
 
-        eth_device_linkchange(&stm32_eth_device.parent, RT_TRUE);
+        eth_device_linkchange(&stm32_eth_device.parent, RT_FALSE);
         HAL_ETH_GetMACConfig(&EthHandle, &MACConf);
         MACConf.DuplexMode = ETH_FULLDUPLEX_MODE;
         MACConf.Speed = ETH_SPEED_100M;
