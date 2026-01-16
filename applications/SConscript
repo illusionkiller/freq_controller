@@ -4,9 +4,14 @@ from building import *
 cwd     = GetCurrentDir()
 src     = Split("""
 main.c
-dtu.c
 env.c
 """)
+if GetDepend(['BSP_USING_KA']):
+    src += ['dtu_KA.c']
+if GetDepend(['BSP_USING_X']):
+    src += ['dtu_X.c']
+if GetDepend(['BSP_USING_Q']):
+    src += ['dtu_Q.c']
 
 group = DefineGroup('Applications', src, depend = [''])
 

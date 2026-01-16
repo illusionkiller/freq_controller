@@ -1122,11 +1122,11 @@ int modbus_rtu_open(rtu_modbus_device_t dev) {
 #endif
     if (OVER_NONE == dev->over_type) {
         struct modbus_rt_serial_info info = dev->serial_info;
-        dev->byte_timeout = (MODBUS_RTU_TIME_OUT_BITS * 1000000)/info.baudrate;
-        if(dev->byte_timeout < (MODBUS_RTU_BYTE_TIME_OUT_MIN * 1000)) {         //转化为ms。此处注意，建议最短的字符间距设置不低于3ms(1750us)。
+        dev->byte_timeout = (MODBUS_RTU_TIME_OUT_BITS * 1000)/info.baudrate;
+        if(dev->byte_timeout < (MODBUS_RTU_BYTE_TIME_OUT_MIN)) {         //转化为ms。此处注意，建议最短的字符间距设置不低于3ms(1750us)。
             dev->byte_timeout = MODBUS_RTU_BYTE_TIME_OUT_MIN;
         } else {
-            dev->byte_timeout = dev->byte_timeout/1000 + 1;
+            dev->byte_timeout = dev->byte_timeout + 1;
         }
         int serial = modbus_rt_serial_open(info.devname, info.baudrate, info.bytesize, 
         info.parity, info.stopbits, info.xonxoff);

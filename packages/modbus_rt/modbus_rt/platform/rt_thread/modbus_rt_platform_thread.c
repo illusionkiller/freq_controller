@@ -67,6 +67,7 @@ int modbus_rt_sem_init(modbus_rt_sem_t* m) {
     return 0;
 }
 int modbus_rt_sem_wait(modbus_rt_sem_t* m) {
+    rt_sem_control(m->sem, RT_IPC_CMD_RESET, 0);
     return rt_sem_take(m->sem, RT_WAITING_FOREVER);
 }
 int modbus_rt_sem_post(modbus_rt_sem_t* m) {

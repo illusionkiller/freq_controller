@@ -1171,9 +1171,9 @@ int modbus_tcp_excuse(tcp_modbus_device_t dev, int dir_slave, int type_function,
         data->quantity = quantity;
         data->ptr_data = ptr_data;
         data->function = type_function;
+        modbus_rt_sem_wait(&(data->completion));
         modbus_rt_mutex_unlock(&(dev->mutex));
 
-        modbus_rt_sem_wait(&(data->completion));
         return data->ret;
     }
 #endif
@@ -1411,9 +1411,9 @@ int modbus_tcp_excuse_ex(tcp_modbus_device_t dev, int slave, int function,int w_
     data->read_quantity = r_quantity;
     data->ptr_read_data = ptr_r_data;
     data->function = function;
+    modbus_rt_sem_wait(&(data->completion));
     modbus_rt_mutex_unlock(&(dev->mutex));
 
-    modbus_rt_sem_wait(&(data->completion));
     return data->ret;
 }
 
@@ -1458,9 +1458,9 @@ static void modbus_tcp_master_file_entry(void *parameter) {
                     raw_req_len += info_len;
                     p2p_info->raw_req_len = raw_req_len;
                     data->function = raw_req[1];
-                    modbus_rt_mutex_unlock(&(dev->mutex));
                     //等待执行完毕
                     modbus_rt_sem_wait(&(data->completion));
+                    modbus_rt_mutex_unlock(&(dev->mutex));
                     if(MODBUS_RT_EOK != data->ret)
                     {
                         modbus_rt_sem_post(&(p2p_info->sem));
@@ -1491,9 +1491,9 @@ static void modbus_tcp_master_file_entry(void *parameter) {
                     }
                     p2p_info->raw_req_len = raw_req_len;
                     data->function = raw_req[1];
-                    modbus_rt_mutex_unlock(&(dev->mutex));
                     //等待执行完毕
                     modbus_rt_sem_wait(&(data->completion));
+                    modbus_rt_mutex_unlock(&(dev->mutex));
                     if(MODBUS_RT_EOK != data->ret)
                     {
                         modbus_rt_sem_post(&(p2p_info->sem));
@@ -1532,9 +1532,9 @@ static void modbus_tcp_master_file_entry(void *parameter) {
                     raw_req_len += info_len;
                     p2p_info->raw_req_len = raw_req_len;
                     data->function = raw_req[1];
-                    modbus_rt_mutex_unlock(&(dev->mutex));
                     //等待执行完毕
                     modbus_rt_sem_wait(&(data->completion));
+                    modbus_rt_mutex_unlock(&(dev->mutex));
                     if(MODBUS_RT_EOK != data->ret)
                     {
                         modbus_rt_sem_post(&(p2p_info->sem));
@@ -1574,9 +1574,9 @@ static void modbus_tcp_master_file_entry(void *parameter) {
 
                     p2p_info->raw_req_len = raw_req_len;
                     data->function = raw_req[1];
-                    modbus_rt_mutex_unlock(&(dev->mutex));
                     //等待执行完毕
                     modbus_rt_sem_wait(&(data->completion));
+                    modbus_rt_mutex_unlock(&(dev->mutex));
                     if(MODBUS_RT_EOK != data->ret)
                     {
                         modbus_rt_sem_post(&(p2p_info->sem));

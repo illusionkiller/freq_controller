@@ -63,7 +63,7 @@ extern "C" {
 #endif
 
 #ifndef MODBUS_TCP_MASTER_ENABLE
-    #define MODBUS_TCP_MASTER_ENABLE                1
+    #define MODBUS_TCP_MASTER_ENABLE                0
 #endif
 
 
@@ -75,11 +75,11 @@ extern "C" {
  @endverbatim
  */
 #ifndef MODBUS_ASCII_SLAVE_ENABLE
-    #define MODBUS_ASCII_SLAVE_ENABLE           1
+    #define MODBUS_ASCII_SLAVE_ENABLE           0
 #endif
 
 #ifndef MODBUS_ASCII_MASTER_ENABLE
-    #define MODBUS_ASCII_MASTER_ENABLE          1
+    #define MODBUS_ASCII_MASTER_ENABLE           0
 #endif
 
 
@@ -94,7 +94,7 @@ extern "C" {
 #endif
 
 #ifndef MODBUS_TCP_MASTER_FOR_UDP_ENABLE
-    #define MODBUS_TCP_MASTER_FOR_UDP_ENABLE    1
+    #define MODBUS_TCP_MASTER_FOR_UDP_ENABLE    0
 #endif
 
 
@@ -189,7 +189,7 @@ extern "C" {
         #define MODBUS_RTU_NAME_MAX 24
     #endif
     #ifndef MODBUS_RTU_TIME_OUT
-        #define     MODBUS_RTU_TIME_OUT    (1000)
+        #define     MODBUS_RTU_TIME_OUT    (3000)
     #endif
     #ifndef MODBUS_RTU_TIME_OUT_BITS
         #define     MODBUS_RTU_TIME_OUT_BITS    (45)

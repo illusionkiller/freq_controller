@@ -272,10 +272,13 @@
 #define RT_LWIP_IGMP
 #define RT_LWIP_ICMP
 #define RT_LWIP_DNS
+#define RT_LWIP_DHCP
+#define IP_SOF_BROADCAST 1
+#define IP_SOF_BROADCAST_RECV 1
 
 /* Static IPv4 Address */
 
-#define RT_LWIP_IPADDR "192.168.1.30"
+#define RT_LWIP_IPADDR "192.168.1.10"
 #define RT_LWIP_GWADDR "192.168.1.1"
 #define RT_LWIP_MSKADDR "255.255.255.0"
 /* end of Static IPv4 Address */
@@ -648,6 +651,10 @@
 
 /* Board extended module Drivers */
 
+/* Board type select(KA/X/Q) */
+
+#define BSP_USING_KA
+/* end of Board type select(KA/X/Q) */
 /* end of Hardware Drivers Config */
 
 #endif

@@ -10,7 +10,6 @@ extern "C"
 #define DTU_FIRMWARE_VERSION 1
 #define DTU_DEVICE_DEFAULT_SN "DTHT-" // 最长12位
 #define DTU_DEVICE_SN_MAX_LEN 12
-#define DEVICE_FRE_CONTROL_RANGE_KA
 typedef struct
 {
     uint32_t IP;       // 0x1000  /rw

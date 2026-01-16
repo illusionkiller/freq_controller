@@ -20,12 +20,12 @@ sys_reg_t sys_reg = {
     .GATE_WAY = 0x0101a8c0,
     .SN = DTU_DEVICE_DEFAULT_SN,
     .LW1011 = 0,
-#if defined DEVICE_FRE_CONTROL_RANGE_KA
-    .CH1_INPUT_FRE = 17000000,
+#if defined BSP_USING_KA
+    .CH1_INPUT_FRE = 17000000,//KHZ
     .CH2_INPUT_FRE = 17000000,
-#elif defined DEVICE_FRE_CONTROL_RANGE_Q
-#elif defined DEVICE_FRE_CONTROL_RANGE_X
-    .CH1_INPUT_FRE = 7000000,
+#elif defined BSP_USING_Q
+#elif defined BSP_USING_X
+    .CH1_INPUT_FRE = 7000000,//KHZ
     .CH2_INPUT_FRE = 7000000,
 #endif
     .LW1016 = 0,

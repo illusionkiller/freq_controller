@@ -302,11 +302,6 @@ rt_err_t rt_stm32_eth_tx(rt_device_t dev, struct pbuf *p)
             EthHandle.gState = HAL_ETH_STATE_READY;
         }
     }
-    else
-    {
-        LOG_E("eth transmit frame faild, netif not up");
-    }
-
     ret = ERR_OK;
 
     return ret;
