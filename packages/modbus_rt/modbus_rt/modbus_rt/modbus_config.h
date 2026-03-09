@@ -189,7 +189,7 @@ extern "C" {
         #define MODBUS_RTU_NAME_MAX 24
     #endif
     #ifndef MODBUS_RTU_TIME_OUT
-        #define     MODBUS_RTU_TIME_OUT    (3000)
+        #define     MODBUS_RTU_TIME_OUT    (1000)
     #endif
     #ifndef MODBUS_RTU_TIME_OUT_BITS
         #define     MODBUS_RTU_TIME_OUT_BITS    (45)

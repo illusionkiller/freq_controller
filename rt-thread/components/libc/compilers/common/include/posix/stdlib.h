@@ -20,12 +20,12 @@ extern "C" {
 
 void __rt_libc_exit(int status);
 
-char *itoa(int n, char *buffer, int radix);
+// char *itoa(int n, char *buffer, int radix);
 char *lltoa(int64_t ll, char *buffer, int radix);
 char *ltoa(long l, char *buffer, int radix);
 char *ulltoa(uint64_t ll, char *buffer, int radix);
 char *ultoa(unsigned long l, char *buffer, int radix);
-char *utoa(unsigned int n, char *buffer, int radix);
+// char *utoa(unsigned int n, char *buffer, int radix);
 
 #ifdef __cplusplus
 }

@@ -9,18 +9,21 @@
  */
 
 #include "drv_gpio.h"
+#include "env.h"
+#include "dfs_file.h" /* 当需要使用文件操作时，需要包含这个头文件 */
+
 #define DBG_TAG "MAIN"
 #define DBG_LVL DBG_LOG
 #include <rtdbg.h>
 static uint8_t last_reset_code = 0;
 enum
 {
-    SYSTEM_RESET_CODE_POR_RESET = 0,
-    SYSTEM_RESET_CODE_BOR_RESET,
-    SYSTEM_RESET_CODE_PIN_RESET,
-    SYSTEM_RESET_CODE_SOFT_RESET,
-    SYSTEM_RESET_CODE_WDT_RESET,
-    SYSTEM_RESET_CODE_LOWPWR_RESET,
+    SYSTEM_RESET_CODE_POR_RESET = 1 << 0,
+    SYSTEM_RESET_CODE_BOR_RESET = 1 << 1,
+    SYSTEM_RESET_CODE_PIN_RESET = 1 << 2,
+    SYSTEM_RESET_CODE_SOFT_RESET = 1 << 3,
+    SYSTEM_RESET_CODE_WDT_RESET = 1 << 4,
+    SYSTEM_RESET_CODE_LOWPWR_RESET = 1 << 5,
 };
 static int check_reset_reason(void)
 {
@@ -69,7 +72,7 @@ static rt_device_t wdg_dev = RT_NULL;
 
 static void idle_hook(void)
 {
-
+    
 }
 
 static int wdt_init(void)
@@ -95,7 +98,7 @@ static int wdt_init(void)
     rt_thread_idle_sethook(idle_hook);
     return RT_EOK;
 }
-INIT_DEVICE_EXPORT(wdt_init);
+// INIT_DEVICE_EXPORT(wdt_init);
 #endif
 /*
  ******************************************************************************************************
@@ -136,13 +139,15 @@ static void JumpToBootloader(void)
 MSH_CMD_EXPORT_ALIAS(JumpToBootloader, reboot_loader, jump to system memory);
 
 /* defined the LED0 pin: PB1 */
-#define LED0_PIN    GET_PIN(E, 9)
+#define LED0_PIN GET_PIN(E, 9)
 
 int main(void)
 {
     /* set LED0 pin mode to output */
+    LOG_D("firmware version release_v%s", STR2(DTU_FIRMWARE_VERSION));
     rt_pin_mode(LED0_PIN, PIN_MODE_OUTPUT);
-    
+    extern void dtu_init_thread(void *parameter);
+    dtu_init_thread(NULL);
     while (1)
     {
         rt_pin_write(LED0_PIN, PIN_HIGH);
@@ -153,3 +158,34 @@ int main(void)
         rt_thread_mdelay(500);
     }
 }
+
+
+// static void readwrite_sample(void)
+// {
+//     int fd, size;
+//     char s[] = "RT-Thread Programmer!", buffer[80];
+
+//     rt_kprintf("Write string %s to test.txt.\n", s);
+
+//     /* 以创建和读写模式打开 /text.txt 文件，如果该文件不存在则创建该文件 */
+//     fd = open("/spiflash/text.txt", O_WRONLY | O_CREAT);
+//     if (fd >= 0)
+//     {
+//         write(fd, s, sizeof(s));
+//         close(fd);
+//         rt_kprintf("Write done.\n");
+//     }
+
+//     /* 以只读模式打开 /text.txt 文件 */
+//     fd = open("/spiflash/text.txt", O_RDONLY);
+//     if (fd >= 0)
+//     {
+//         size = read(fd, buffer, sizeof(buffer));
+//         close(fd);
+//         rt_kprintf("Read from file test.txt : %s \n", buffer);
+//         if (size < 0)
+//             return;
+//     }
+// }
+// /* 导出到 msh 命令列表中 */
+// MSH_CMD_EXPORT(readwrite_sample, readwrite sample);

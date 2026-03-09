@@ -1005,7 +1005,7 @@ int modbus_tcp_open(tcp_modbus_device_t dev) {
     if(MODBUS_SLAVE == dev->mode) {
         sprintf(str_name,"tcp_ts%d",sock);
         dev->thread = modbus_rt_thread_init(str_name, modbus_tcp_slave_entry, 
-                dev, MODBUS_THREAD_STACK_SIZE, MODBUS_THREAD_PRIO, 500);
+                dev, MODBUS_THREAD_STACK_SIZE*2, MODBUS_THREAD_PRIO, 500);
     }
 #endif
 #if MODBUS_TCP_MASTER_ENABLE

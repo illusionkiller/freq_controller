@@ -419,13 +419,13 @@ menu "Board extended module Drivers"
 endmenu
 
 menu "Board type select(KA/X/Q)"
-        config BSP_USING_KA
+        config BSP_USING_KA_DOWN
             bool "Enable KA Type"
             default y
-        config BSP_USING_X
+        config BSP_USING_X_DOWN
             bool "Enable X Type"
             default n
-        config BSP_USING_Q
+        config BSP_USING_Q_DOWN
             bool "Enable Q Type"
             default n
 endmenu

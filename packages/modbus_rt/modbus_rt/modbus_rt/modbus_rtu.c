@@ -1223,7 +1223,7 @@ int modbus_rtu_open(rtu_modbus_device_t dev) {
         else
             sprintf(str_name, "rtu_rs%d", id_thread);
         dev->thread = modbus_rt_thread_init(str_name, modbus_rtu_slave_entry,
-                                            dev, MODBUS_THREAD_STACK_SIZE, MODBUS_THREAD_PRIO, 500);
+                                            dev, MODBUS_THREAD_STACK_SIZE*2, MODBUS_THREAD_PRIO, 500);
     }
 #endif
 #if MODBUS_RTU_MASTER_ENABLE
