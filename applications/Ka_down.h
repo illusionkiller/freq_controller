@@ -11,7 +11,7 @@ extern "C"
 #if defined BSP_USING_KA_DOWN
 
 #define KA_CHANNEL_NUM (2)
-#define MAX_DECAY_VALUE 120
+
 typedef union
 {
     struct
@@ -73,8 +73,8 @@ typedef struct
     uint16_t mb_id;
     rtu_modbus_device_t channel_handle;
     pll_node_status_t status;
-    uint16_t ctrl_reg_set;
-    uint16_t ctrl_reg_get;
+    pll_node_ctrl_t ctrl_reg_set;
+    pll_node_ctrl_t ctrl_reg_get;
     uint16_t temperature;
     uint16_t version;
     uint16_t input_ref_vol;
@@ -138,7 +138,13 @@ typedef struct
     uint32_t pfd2_min; // Hz
     /* data */
 } IF_table_t;
-
+#define DEFAULT_IF_SELECT_TABLE()       \
+{                                       \
+    {720000000ULL, 5000000, 10000000},  \
+    {1200000000ULL, 5000000, 10000000}, \
+    {1500000000ULL, 5000000, 10000000}, \
+    {1800000000ULL, 5000000, 10000000}  \
+}
 // 定义一个衰减补偿表给后级衰减使用
 typedef struct
 {
@@ -160,12 +166,10 @@ typedef struct
     uint8_t decay_compensation_value;
     uint8_t decay_value;
     Combo IF_info[128];
-    IF_table_t IF_table[4];
     pll_node_attr_t *pll_node;
     frecov_node_attr_t frecov_node[1];
     rt_device_t decay_dev;
     clk_node_attr_t clk_node[2];
-    decay_compensation_t *decay_compensation_table;
     rt_bool_t output_en;
 } channel_attr_t;
 

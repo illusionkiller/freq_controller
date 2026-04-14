@@ -25,8 +25,8 @@
 #define DEFAULT_FRECOVX2_MB_ID 3
 // 定义频率相关常量
 #define PFD_OFFSET 100000000ULL // 100 MHz
-#define PFD1_MIN 10000000ULL    // Hz,距离PFD1频率的最小距离,优化杂散
-#define PFD2_MIN 15000000ULL
+#define PFD1_MIN 5000000ULL    // Hz,距离PFD1频率的最小距离,优化杂散
+#define PFD2_MIN 10000000ULL
 #define MAX_DECAY_VALUE 120
 #define FREQ_MULTI_FACTOR 3
 #define INPUT_FREQ_START 17000000000
@@ -78,6 +78,10 @@ static decay_compensation_t default_decay_compensation_table[KA_CHANNEL_NUM][3] 
 {
         DEFAULT_DECAY_COMPENSATION_TABLE(),
         DEFAULT_DECAY_COMPENSATION_TABLE(),
+};
+static IF_table_t IF_table[KA_CHANNEL_NUM][4] = {
+    DEFAULT_IF_SELECT_TABLE(),
+    DEFAULT_IF_SELECT_TABLE(),
 };
 channel_attr_t get_channel_attr(int channel_idx)
 {
@@ -182,7 +186,7 @@ static void print_channel_info(void)
         channel_attr_t *channel = &channel_attr[i];
         LOG_D("channel %d:", i);
         LOG_D("input_freq_hz %llu,decay_value %d,decay_compensation_value %d,if_idx %d", channel->input_freq_hz, channel->decay_value, channel->decay_compensation_value, channel->if_idx);
-        LOG_D("IF_freq %llu,pfd1_min %lu,pfd2_min %lu", channel->IF_table[channel->if_idx].IF_freq, channel->IF_table[channel->if_idx].pfd1_min, channel->IF_table[channel->if_idx].pfd2_min);
+        LOG_D("IF_freq %llu,pfd1_min %lu,pfd2_min %lu", IF_table[i][channel->if_idx].IF_freq, IF_table[i][channel->if_idx].pfd1_min, IF_table[i][channel->if_idx].pfd2_min);
         pll_node_attr_t *pll_node = channel->pll_node;
         LOG_D("PLL status 0x%04x,temperature %.1f,lock %d,ctrl_reg 0x%04x,input ref signal voltage %dmV ,frequency %llu Hz",
               pll_node->status.val, (float)pll_node->temperature / 10, pll_node->status.PLL_LOCK, pll_node->ctrl_reg_get, pll_node->input_ref_vol, pll_node->freq_get);
@@ -216,7 +220,7 @@ void work_func0(struct rt_work *work, void *work_data)
         if (ret == MODBUS_RT_EOK)
         {
             pll_node->status.val = regs[0];
-            pll_node->ctrl_reg_get = regs[1];
+            pll_node->ctrl_reg_get.val = regs[1];
             pll_node->temperature = regs[2];
             pll_node->version = regs[3];
             pll_node->input_ref_vol = regs[4];
@@ -340,15 +344,16 @@ void work_func5(struct rt_work *work, void *work_data)
     {
         ct_io_map_t ct_map = {0};
         struct pcf8575c_io_map io_map = {0};
-        if (channel_attr->decay_value <= 63) // 衰减没有超过30dB,只使用前级衰减  0b111111 p01_06
+        uint8_t real_decay = channel_attr->decay_value + channel_attr->decay_compensation_value;
+        if (real_decay <= 63) // 衰减没有超过30dB,只使用前级衰减  0b111111 p01_06
         {
-            ct_map.p01_06 = channel_attr->decay_value;
+            ct_map.p01_06 = real_decay;
             ct_map.p11_16 = 0;
         }
         else
         {
             ct_map.p01_06 = 63;
-            ct_map.p11_16 = channel_attr->decay_value - ct_map.p01_06;
+            ct_map.p11_16 = real_decay - ct_map.p01_06;
         }
         io_map.mask = 0xFFFF;
         io_map.value = ct_map.val;
@@ -379,12 +384,12 @@ void work_func7(struct rt_work *work, void *work_data)
     pll_node_attr_t *pll_node = (pll_node_attr_t *)work_data;
     if (pll_node && pll_node->channel_handle && pll_node->link_status)
     {
-        if (pll_node->ctrl_reg_set != pll_node->ctrl_reg_get)
+        if (pll_node->ctrl_reg_set.val != pll_node->ctrl_reg_get.val)
         {
-            int ret = modbus_rtu_excuse(pll_node->channel_handle, pll_node->mb_id, AGILE_MODBUS_FC_WRITE_SINGLE_REGISTER, 0x0001, 1, &pll_node->ctrl_reg_set);
+            int ret = modbus_rtu_excuse(pll_node->channel_handle, pll_node->mb_id, AGILE_MODBUS_FC_WRITE_SINGLE_REGISTER, 0x0001, 1, &pll_node->ctrl_reg_set.val);
             if (ret != MODBUS_RT_EOK)
             {
-                LOG_E("config pll ctrl_reg value(0x%02x) failed", pll_node->ctrl_reg_set);
+                LOG_E("config pll ctrl_reg value(0x%02x) failed", pll_node->ctrl_reg_set.val);
             }
             rt_thread_mdelay(RS485_BUS_IDLE_WAITTIME);
         }
@@ -436,12 +441,13 @@ static work_item_t *get_work_item(int channel_idx, int type)
     }
     return NULL;
 }
-// 配置变频器衰减(x1)
+// 配置变频器衰减
 rt_err_t config_channel_decay(int channel_idx, uint8_t decay_value)
 {
     RT_ASSERT(channel_idx < KA_CHANNEL_NUM);
+    // 计算当前频率所需要的衰减补偿值
+
     channel_attr[channel_idx].decay_value = decay_value;
-    channel_attr[channel_idx].decay_compensation_value = 0;
     work_item_t *work_item = get_work_item(channel_idx, WORK_TYPE_CONFIG_DECAY);
     if (work_item)
         rt_work_submit(&work_item->work, 0);
@@ -476,6 +482,7 @@ rt_err_t config_channel_output(int channel_idx, rt_bool_t output_en)
     return RT_EOK;
 }
 
+
 // 配置本振频率
 rt_err_t config_channel_fre(int channel_idx, uint64_t freq_hz, uint8_t if_idx)
 {
@@ -483,11 +490,13 @@ rt_err_t config_channel_fre(int channel_idx, uint64_t freq_hz, uint8_t if_idx)
         return -RT_ERROR;
     if (freq_hz < INPUT_FREQ_START || freq_hz > INPUT_FREQ_END)
         return -RT_ERROR;
+    if(if_idx >= sizeof(IF_table[channel_idx]) / sizeof(IF_table[channel_idx][0]))
+        return -RT_ERROR;
     channel_attr[channel_idx].input_freq_hz = freq_hz;
     size_t closest_idx = 0;
     // 查找所有有效组合
     size_t count = find_valid_combinations(freq_hz, channel_attr[channel_idx].IF_info,
-                                           sizeof(channel_attr[channel_idx].IF_info) / sizeof(channel_attr[channel_idx].IF_info[0]), channel_attr[channel_idx].IF_table[if_idx]);
+                                           sizeof(channel_attr[channel_idx].IF_info) / sizeof(channel_attr[channel_idx].IF_info[0]), IF_table[channel_idx][if_idx]);
     if (count > 0)
     { // 找到最接近目标IF频率组合的索引
         closest_idx = find_closest_if_index(channel_attr[channel_idx].IF_info, count, IF_FREQ);
@@ -514,26 +523,16 @@ rt_err_t config_channel_fre(int channel_idx, uint64_t freq_hz, uint8_t if_idx)
     work_item = get_work_item(channel_idx, WORK_TYPE_CONFIG_FRECOVX2_IF_IDX);
     if (work_item)
         rt_work_urgent(&work_item->work);
-    // 计算当前频率所需要的衰减补偿值
-    //  uint8_t compensation = get_decay_compensation(freq_hz, channel_attr[channel_idx].decay_compensation_table,
-    //                                                sizeof(channel_attr[channel_idx].decay_compensation_table) / sizeof(channel_attr[channel_idx].decay_compensation_table[0]));
-    //  // 配置衰减补偿值
-    //  config_channel_link_decay(channel_idx, channel_attr[channel_idx].decay_dev.decay_value_set, compensation);
+    uint8_t compensation = channel_get_decay_compensation(channel_idx, freq_hz);
+    channel_attr[channel_idx].decay_compensation_value = compensation;
+    config_channel_decay(channel_idx, channel_attr[channel_idx].decay_value);
     char strtemp[32];
-    if (channel_idx == 0)
-    {
-        rt_snprintf(strtemp, sizeof(strtemp), "%llu", freq_hz);
-        _setenv_r(&r, "CH1_INPUT_FRE", strtemp, 1);
-        _setenv_r(&r, "CH1_IF_LEVEL", __itoa(if_idx, strtemp, 10), 1);
-        env_save();
-    }
-    if (channel_idx == 1)
-    {
-        rt_snprintf(strtemp, sizeof(strtemp), "%llu", freq_hz);
-        _setenv_r(&r, "CH2_INPUT_FRE", strtemp, 1);
-        _setenv_r(&r, "CH2_IF_LEVEL", __itoa(if_idx, strtemp, 10), 1);
-        env_save();
-    }
+    char env_name[32] = {0};
+    rt_snprintf(env_name, sizeof(env_name), "CH%u_INPUT_FRE", channel_idx + 1);
+    rt_snprintf(strtemp, sizeof(strtemp), "%llu", freq_hz);
+    _setenv_r(&r, env_name, strtemp, 1);
+    rt_snprintf(env_name, sizeof(env_name), "CH%u_IF_LEVEL", channel_idx + 1);
+    _setenv_r(&r, env_name, __itoa(if_idx, strtemp, 10), 1);
     return RT_EOK;
 }
 
@@ -578,17 +577,6 @@ static void request_get_node_info_timer_callback(void *parameter)
     }
 }
 
-// rt_err_t config_clck3_freq(int channel_idx, uint64_t freq_hz)
-// {
-//     if (channel_idx < 0 || channel_idx >= sizeof(channel_attr) / sizeof(channel_attr[0]))
-//         return -RT_ERROR;
-//     channel_attr[channel_idx].clk_node[2].freq_set = freq_hz;
-//     work_item_t *work_item = get_work_item(WORK_TYPE_CONFIG_CLK3_FREQ);
-//     if (work_item)
-//         rt_work_submit(&work_item->work, 0);
-//     return RT_EOK;
-// }
-
 int channel_init(int channel_id, rtu_modbus_device_t rtu, uint64_t input_freq_hz, uint8_t if_idx)
 {
     RT_ASSERT(channel_id >= 0 && channel_id < sizeof(channel_attr) / sizeof(channel_attr[0]));
@@ -600,23 +588,12 @@ int channel_init(int channel_id, rtu_modbus_device_t rtu, uint64_t input_freq_hz
     channel_attr[channel_id].frecov_node[0].channel_handle = rtu;
     channel_attr[channel_id].clk_node[0].channel_handle = rtu;
     channel_attr[channel_id].clk_node[1].channel_handle = rtu;
-    channel_attr[channel_id].IF_table[0].IF_freq = 720000000ULL;
-    channel_attr[channel_id].IF_table[0].pfd1_min = PFD1_MIN;
-    channel_attr[channel_id].IF_table[0].pfd2_min = PFD2_MIN;
-    channel_attr[channel_id].IF_table[1].IF_freq = 1200000000ULL;
-    channel_attr[channel_id].IF_table[1].pfd1_min = PFD1_MIN;
-    channel_attr[channel_id].IF_table[1].pfd2_min = PFD2_MIN;
-    channel_attr[channel_id].IF_table[2].IF_freq = 1500000000ULL;
-    channel_attr[channel_id].IF_table[2].pfd1_min = PFD1_MIN;
-    channel_attr[channel_id].IF_table[2].pfd2_min = PFD2_MIN;
-    channel_attr[channel_id].IF_table[3].IF_freq = 1800000000ULL;
-    channel_attr[channel_id].IF_table[3].pfd1_min = PFD1_MIN;
-    channel_attr[channel_id].IF_table[3].pfd2_min = PFD2_MIN;
     channel_attr[channel_id].input_freq_hz = input_freq_hz;
     channel_attr[channel_id].decay_value = MAX_DECAY_VALUE;
-    channel_attr[channel_id].decay_compensation_table = default_decay_compensation_table[channel_id];
+    channel_attr[channel_id].decay_compensation_value = channel_get_decay_compensation(channel_id, input_freq_hz);
     channel_attr[channel_id].if_idx = if_idx;
     channel_attr[channel_id].output_en = RT_FALSE; // 默认关闭输出
+    return RT_EOK;
 }
 
 int controler_init(void)
@@ -628,7 +605,7 @@ int controler_init(void)
     RT_ASSERT(rtu3 != NULL);
     rtu4 = modbus_rtu_master_init(COM4_PORT_NAME); // 通道2  --本振 + 变频
     RT_ASSERT(rtu4 != NULL);
-    modbus_workqueue = rt_workqueue_create("modbus_wq", 4096, MODBUS_THREAD_PRIO - 1);
+    modbus_workqueue = rt_workqueue_create("modbus_wq", 1024, MODBUS_THREAD_PRIO - 1);
     RT_ASSERT(modbus_workqueue);
     // 初始化所有工作项
     for (int i = 0; i < sizeof(work_items) / sizeof(work_items[0]); i++)
@@ -644,7 +621,6 @@ int controler_init(void)
     pll_node_attr.channel_handle = rtu2;
     pll_node_attr.mb_id = DEFAULT_PLL_MB_ID;
     get_pll_info(); //  启动锁相源采集一次
-    // 通道1初始化
     uint64_t input_freq_hz = atoll(_getenv_r(&r, "CH1_INPUT_FRE"));
     uint8_t if_idx = atoi(_getenv_r(&r, "CH1_IF_LEVEL"));
     channel_init(0, rtu3, input_freq_hz, if_idx);

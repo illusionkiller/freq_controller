@@ -624,7 +624,7 @@
 
 /* Board type select(KA/X/Q) */
 
-#define BSP_USING_KA_DOWN
+#define BSP_USING_X_DOWN
 /* end of Board type select(KA/X/Q) */
 /* end of Hardware Drivers Config */
 

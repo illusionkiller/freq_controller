@@ -12,7 +12,6 @@ extern "C"
 
 
 #define X_CHANNEL_NUM (2)
-#define MAX_DECAY_VALUE 120
 typedef union
 {
     struct
@@ -74,8 +73,8 @@ typedef struct
     uint16_t mb_id;
     rtu_modbus_device_t channel_handle;
     pll_node_status_t status;
-    uint16_t ctrl_reg_set;
-    uint16_t ctrl_reg_get;
+    pll_node_ctrl_t ctrl_reg_set;
+    pll_node_ctrl_t ctrl_reg_get;
     uint16_t temperature;
     uint16_t version;
     uint16_t input_ref_vol;
@@ -126,7 +125,11 @@ typedef struct
     uint32_t pfd2_min; // Hz
     /* data */
 } IF_table_t;
-
+#define DEFAULT_IF_SELECT_TABLE()             \
+{                                             \
+    {720000000ULL, 10000000ULL, 15000000ULL}, \
+    {1200000000ULL, 10000000ULL, 15000000ULL},       \
+}
 // 定义一个衰减补偿表给后级衰减使用
 typedef struct
 {
@@ -135,24 +138,38 @@ typedef struct
 } decay_compensation_t; // 衰减补偿
 
 #define DEFAULT_DECAY_COMPENSATION_TABLE() \
-{                                        \
-    {24000000000, 3},                    \
-    {25000000000, 2},                    \
-    {25500000000, 1},                    \
+{                                          \
+    {24000000000ULL, 0},                   \
+    {25000000000ULL, 0},                   \
+    {25500000000ULL, 0}                    \
+}
+
+typedef struct
+{
+    uint64_t freq;
+    uint64_t if1_freq;
+} IF1_table_t;
+
+#define DEFAULT_IF1_TABLE()         \
+{                                   \
+    {7100000000ULL, 2900000000ULL}, \
+    {7230000000ULL, 3000000000ULL}, \
+    {7300000000ULL, 3100000000ULL}, \
+    {8000000000ULL, 3100000000ULL}, \
+    {9000000000ULL, 3100000000ULL}, \
 }
 
 typedef struct
 {
     uint64_t input_freq_hz;
     uint8_t if_idx;
+    uint64_t if1_freq;
     uint8_t decay_compensation_value;
     uint8_t decay_value;
     Combo IF_info[128];
-    IF_table_t IF_table[2];
     pll_node_attr_t *pll_node;
     frecov_node_attr_t frecov_node[2];
     clk_node_attr_t clk_node[2];
-    decay_compensation_t *decay_compensation_table;
     rt_bool_t output_en;
 } channel_attr_t;
 

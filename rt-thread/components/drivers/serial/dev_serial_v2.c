@@ -12,6 +12,10 @@
 #include <rtthread.h>
 #include <rtdevice.h>
 
+#ifdef RT_USING_CACHE
+#define RT_SERIAL_DMA_CACHE_LINE_SIZE 32
+#endif
+
 #define DBG_TAG "Serial"
 #define DBG_LVL DBG_INFO
 #include <rtdbg.h>
@@ -946,6 +950,9 @@ static rt_err_t rt_serial_rx_enable(struct rt_device *dev,
     if (serial->config.dma_ping_bufsz > 0 && serial->config.dma_ping_bufsz < RT_SERIAL_RX_MINBUFSZ / 2)
         serial->config.dma_ping_bufsz = RT_SERIAL_RX_MINBUFSZ / 2;
     rx_fifo_size = sizeof(struct rt_serial_rx_fifo) + serial->config.rx_bufsz + serial->config.dma_ping_bufsz;
+#ifdef RT_USING_CACHE
+    rx_fifo_size += RT_SERIAL_DMA_CACHE_LINE_SIZE * 2;
+#endif
 #else
     rx_fifo_size = sizeof(struct rt_serial_rx_fifo) + serial->config.rx_bufsz;
 #endif
@@ -954,15 +961,24 @@ static rt_err_t rt_serial_rx_enable(struct rt_device *dev,
     RT_ASSERT(rx_fifo != RT_NULL);
     rt_memset(rx_fifo, RT_NULL, rx_fifo_size);
 
+    rt_uint8_t *rx_buf = (rt_uint8_t *)rx_fifo + sizeof(struct rt_serial_rx_fifo);
+#ifdef RT_USING_CACHE
+    rx_buf = (rt_uint8_t *)RT_ALIGN((rt_ubase_t)rx_buf, RT_SERIAL_DMA_CACHE_LINE_SIZE);
+#endif
+
     rt_ringbuffer_init(&rx_fifo->rb,
-                       (rt_uint8_t *)rx_fifo + sizeof(struct rt_serial_rx_fifo),
+                       rx_buf,
                        serial->config.rx_bufsz);
 
 #ifdef RT_SERIAL_USING_DMA
     if (serial->config.dma_ping_bufsz > 0)
     {
+        rt_uint8_t *dma_ping_buf = rx_buf + serial->config.rx_bufsz;
+#ifdef RT_USING_CACHE
+        dma_ping_buf = (rt_uint8_t *)RT_ALIGN((rt_ubase_t)dma_ping_buf, RT_SERIAL_DMA_CACHE_LINE_SIZE);
+#endif
         rt_ringbuffer_init(&rx_fifo->dma_ping_rb,
-                           (rt_uint8_t *)rx_fifo + sizeof(struct rt_serial_rx_fifo) + serial->config.rx_bufsz,
+                           dma_ping_buf,
                            serial->config.dma_ping_bufsz);
     }
 #endif

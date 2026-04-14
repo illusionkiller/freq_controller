@@ -11,7 +11,6 @@ extern "C"
 #if defined BSP_USING_Q_DOWN
 
 #define Q_CHANNEL_NUM (1)
-#define MAX_DECAY_VALUE 120
 typedef union
 {
     struct
@@ -73,8 +72,8 @@ typedef struct
     uint16_t mb_id;
     rtu_modbus_device_t channel_handle;
     pll_node_status_t status;
-    uint16_t ctrl_reg_set;
-    uint16_t ctrl_reg_get;
+    pll_node_ctrl_t ctrl_reg_set;
+    pll_node_ctrl_t ctrl_reg_get;
     uint16_t temperature;
     uint16_t version;
     uint16_t input_ref_vol;
@@ -138,7 +137,13 @@ typedef struct
     uint32_t pfd2_min; // Hz
     /* data */
 } IF_table_t;
-
+#define DEFAULT_IF_SELECT_TABLE()       \
+{                                       \
+    {720000000ULL, 5000000, 10000000},  \
+    {1200000000ULL, 5000000, 10000000}, \
+    {1500000000ULL, 5000000, 10000000}, \
+    {1800000000ULL, 5000000, 10000000}  \
+}
 // 定义一个衰减补偿表给后级衰减使用
 typedef struct
 {
@@ -148,31 +153,42 @@ typedef struct
 
 #define DEFAULT_DECAY_COMPENSATION_TABLE() \
 {                                      \
-    {24000000000, 3},                  \
-    {25000000000, 2},                  \
-    {25500000000, 1},                  \
+    {24000000000ULL, 0},                  \
+    {25000000000ULL, 0},                  \
+    {25500000000ULL, 0}                 \
+}
+
+typedef struct
+{
+    uint64_t freq;
+    uint64_t input_freq;
+} input_freq2_table_t;
+
+#define DEFAULT_INPUT_FREQ2_TABLE()         \
+{                                   \
+    {41500000000ULL, 17200000000ULL}, \
+    {43000000000ULL, 17700000000ULL}, \
 }
 
 typedef struct
 {
     uint64_t input_freq_hz;
+    uint64_t input_if1_freq;
     uint8_t if_idx;
     uint8_t decay_compensation_value;
     uint8_t decay_value;
     Combo IF_info[128];
-    IF_table_t IF_table[2];
-    pll_node_attr_t *pll_node;
+    pll_node_attr_t pll_node;
     frecov_node_attr_t frecov_node[1];
-    rt_device_t decay_dev;
+    rt_device_t decay_dev[2];
     clk_node_attr_t clk_node[3];
-    decay_compensation_t *decay_compensation_table;
     rt_bool_t output_en;
 } channel_attr_t;
 
-channel_attr_t get_channel_attr(int channel_idx);
-rt_err_t config_channel_fre(int channel_idx, uint64_t freq_hz, uint8_t if_idx);
-rt_err_t config_channel_decay(int channel_idx, uint8_t decay_value);
-rt_err_t config_channel_output(int channel_idx, rt_bool_t output_en);
+channel_attr_t get_channel_attr(void);
+rt_err_t config_channel_fre(uint64_t freq_hz, uint8_t if_idx);
+rt_err_t config_channel_decay(uint8_t decay_value);
+rt_err_t config_channel_output(rt_bool_t output_en);
 rt_err_t select_pll_input_ref(uint8_t input_ref);
 rt_err_t get_pll_info(void);
 int controler_init(void);

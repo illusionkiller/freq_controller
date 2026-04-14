@@ -82,6 +82,7 @@ static uint16_t modbus_channel_regs[KA_CHANNEL_NUM][MAX_HOLDING_REG_NUM] = {0};
 static tcp_modbus_device_t tsu = RT_NULL;
 static rtu_modbus_device_t rtu = RT_NULL;
 static system_status_t sys_status = {0};
+static struct _reent r = {0};
 int sys_holding_regs_process(uint16_t *reg_buffer, int index, int reg_count, enum MB_MODE mode)
 {
     struct netdev *netdev = netdev_get_by_name("e0");
@@ -95,9 +96,13 @@ int sys_holding_regs_process(uint16_t *reg_buffer, int index, int reg_count, enu
             if (mode == MB_MODE_READ)
             {
                 modbus_data_uint2regs(LITTLE_ENDIAL, (uint16_t *)&reg_buffer[addr_index], &netdev->ip_addr.addr, 1);
-                addr_index += 2;
             }
-
+            else
+            {
+                modbus_data_regs2uint(LITTLE_ENDIAL, &netdev->ip_addr.addr, (uint16_t *)&reg_buffer[addr_index], 2);
+                _setenv_r(&r, "IP", inet_ntoa(netdev->ip_addr.addr), 1);
+            }
+            addr_index += 2;
             break;
         }
         case 0x02: // mask
@@ -105,8 +110,13 @@ int sys_holding_regs_process(uint16_t *reg_buffer, int index, int reg_count, enu
             if (mode == MB_MODE_READ)
             {
                 modbus_data_uint2regs(LITTLE_ENDIAL, (uint16_t *)&reg_buffer[addr_index], &netdev->netmask.addr, 1);
-                addr_index += 2;
             }
+            else
+            {
+                modbus_data_regs2uint(LITTLE_ENDIAL, &netdev->netmask.addr, (uint16_t *)&reg_buffer[addr_index], 2);
+                _setenv_r(&r, "IP_MASK", inet_ntoa(netdev->netmask.addr), 1);
+            }
+            addr_index += 2;
             break;
         }
         case 0x04: // gateway
@@ -114,8 +124,13 @@ int sys_holding_regs_process(uint16_t *reg_buffer, int index, int reg_count, enu
             if (mode == MB_MODE_READ)
             {
                 modbus_data_uint2regs(LITTLE_ENDIAL, (uint16_t *)&reg_buffer[addr_index], &netdev->gw.addr, 1);
-                addr_index += 2;
             }
+            else
+            {
+                modbus_data_regs2uint(LITTLE_ENDIAL, &netdev->gw.addr, (uint16_t *)&reg_buffer[addr_index], 2);
+                _setenv_r(&r, "GATE_WAY", inet_ntoa(netdev->gw.addr), 1);
+            }
+            addr_index += 2;
             break;
         }
         case 0x06: // SN
@@ -125,8 +140,8 @@ int sys_holding_regs_process(uint16_t *reg_buffer, int index, int reg_count, enu
                 char sn[12] = {0};
                 rt_strncpy(sn, getenv("SN"), sizeof(sn));
                 modbus_data_bytes2regs(LITTLE_ENDIAL, (uint16_t *)&reg_buffer[addr_index], sn, sizeof(sn));
-                addr_index += 6; //
             }
+            addr_index += 6; // 12个字节
             break;
         }
         case 0x0C: // 固件版本
@@ -134,8 +149,8 @@ int sys_holding_regs_process(uint16_t *reg_buffer, int index, int reg_count, enu
             if (mode == MB_MODE_READ)
             {
                 reg_buffer[addr_index] = DTU_FIRMWARE_VERSION;
-                addr_index++;
             }
+            addr_index++;
             break;
         }
         case 0x0E: // 系统控制器
@@ -159,8 +174,8 @@ int sys_holding_regs_process(uint16_t *reg_buffer, int index, int reg_count, enu
             if (mode == MB_MODE_READ)
             {
                 reg_buffer[addr_index] = sys_status.val;
-                addr_index++;
             }
+            addr_index++;
             break;
         }
         default:
@@ -168,6 +183,7 @@ int sys_holding_regs_process(uint16_t *reg_buffer, int index, int reg_count, enu
             break;
         }
     }
+    env_save();
     return 0;
 }
 
@@ -186,11 +202,10 @@ int channel_holding_regs_process(int channel_id, int index, int reg_count, enum 
         case 0x00: // 通道控制寄存器
         {
             channel_ctrl_t channel_ctrl = {0};
-            pll_node_ctrl_t *pll_node_ctrl = (pll_node_ctrl_t *)&channel_attr.pll_node->ctrl_reg_set;
             if (mode == MB_MODE_READ)
             {
                 channel_ctrl.IF_SW = channel_attr.if_idx;
-                channel_ctrl.PLL_INPUT_SEL = pll_node_ctrl->REF_10M_100M_SEL;
+                channel_ctrl.PLL_INPUT_SEL = channel_attr.pll_node->ctrl_reg_get.REF_10M_100M_SEL;
                 channel_ctrl.OUTPUT_EN = channel_attr.output_en;
                 reg_buffer[addr_index] = channel_ctrl.val;
             }
@@ -298,6 +313,7 @@ int channel_holding_regs_process(int channel_id, int index, int reg_count, enum 
             break;
         }
     }
+    env_save();
     return MODBUS_RT_EOK;
 }
 

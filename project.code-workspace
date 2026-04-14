@@ -1,0 +1,16 @@
+{
+    "folders": [
+        {
+            "path": "rt-thread"
+        }
+    ],
+    "settings": {
+        "clangd.arguments": [
+            "--compile-commands-dir=..\\",
+            "--header-insertion=never"
+        ],
+        "files.exclude": {
+            ".": true
+        }
+    }
+}

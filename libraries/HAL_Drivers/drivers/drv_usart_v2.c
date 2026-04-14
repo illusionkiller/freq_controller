@@ -380,6 +380,7 @@ static rt_ssize_t stm32_transmit(struct rt_serial_device     *serial,
                                        rt_uint32_t           tx_flag)
 {
     struct stm32_uart *uart;
+    HAL_StatusTypeDef status;
 
     RT_ASSERT(serial != RT_NULL);
     RT_ASSERT(buf != RT_NULL);
@@ -390,7 +391,12 @@ static rt_ssize_t stm32_transmit(struct rt_serial_device     *serial,
 #ifdef RT_USING_CACHE
         rt_hw_cpu_dcache_ops(RT_HW_CACHE_FLUSH, buf, size);
 #endif
-        HAL_UART_Transmit_DMA(&uart->handle, buf, size);
+        status = HAL_UART_Transmit_DMA(&uart->handle, buf, size);
+        if (status != HAL_OK)
+        {
+            LOG_W("(%s) dma tx start failed: %d", serial->parent.parent.name, status);
+            return 0;
+        }
         return size;
     }
 
@@ -420,9 +426,22 @@ static void dma_recv_isr(struct rt_serial_device *serial, rt_uint8_t isr_flag)
         rt_uint8_t *ptr = NULL;
         rt_hw_serial_control_isr(serial, RT_HW_SERIAL_CTRL_GET_DMA_PING_BUF, &ptr);
 #ifdef  RT_USING_CACHE
-        rt_hw_cpu_dcache_ops(RT_HW_CACHE_INVALIDATE, (void *)ptr, serial->config.dma_ping_bufsz);
+        if (counter <= uart->dma_rx.remaining_cnt)
+        {
+            rt_hw_cpu_dcache_ops(RT_HW_CACHE_INVALIDATE,
+                                 ptr + serial->config.dma_ping_bufsz - uart->dma_rx.remaining_cnt,
+                                 recv_len);
+        }
+        else
+        {
+            rt_hw_cpu_dcache_ops(RT_HW_CACHE_INVALIDATE,
+                                 ptr + serial->config.dma_ping_bufsz - uart->dma_rx.remaining_cnt,
+                                 uart->dma_rx.remaining_cnt);
+            rt_hw_cpu_dcache_ops(RT_HW_CACHE_INVALIDATE,
+                                 ptr,
+                                 counter == 0 ? 0 : serial->config.dma_ping_bufsz - counter);
+        }
 #endif
-        // SCB_InvalidateDCache_by_Addr((uint32_t *)ptr, serial->config.dma_ping_bufsz);
 #endif
         uart->dma_rx.remaining_cnt = counter;
         rt_hw_serial_isr(serial, RT_SERIAL_EVENT_RX_DMADONE | (recv_len << 8));

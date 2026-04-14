@@ -98,7 +98,7 @@ static int wdt_init(void)
     rt_thread_idle_sethook(idle_hook);
     return RT_EOK;
 }
-// INIT_DEVICE_EXPORT(wdt_init);
+INIT_DEVICE_EXPORT(wdt_init);
 #endif
 /*
  ******************************************************************************************************
@@ -108,35 +108,35 @@ static int wdt_init(void)
  *    返 回 值: 无
  ******************************************************************************************************
  */
-static void JumpToBootloader(void)
-{
-    void (*SysMemBootJump)(void);
-#ifdef RT_USING_WDT
-    if (wdg_dev)
-    {
-        rt_device_control(wdg_dev, RT_DEVICE_CTRL_WDT_KEEPALIVE, NULL);
-        rt_uint32_t timeout = 32;
-        rt_device_control(wdg_dev, RT_DEVICE_CTRL_WDT_SET_TIMEOUT, &timeout);
-    }
-#endif
-    HAL_DeInit();
-    HAL_RCC_DeInit();
-    __disable_irq();
-    SysTick->CTRL = 0;
-    SysTick->LOAD = 0;
-    SysTick->VAL = 0;
-    HAL_RCC_DeInit();
-    NVIC->ICER[0] = 0xFFFFFFFF;
-    NVIC->ICPR[0] = 0xFFFFFFFF;
-    __IO uint32_t BootAddr = 0x1FFF0000; /* STM32系统BootLoader地址 */
-    SysMemBootJump = (void (*)(void))(*((uint32_t *)(BootAddr + 4)));
-    __set_MSP(*(uint32_t *)BootAddr);
-    __set_CONTROL(0);
-    SysMemBootJump();
-    while (1)
-        ;
-}
-MSH_CMD_EXPORT_ALIAS(JumpToBootloader, reboot_loader, jump to system memory);
+// static void JumpToBootloader(void)
+// {
+//     void (*SysMemBootJump)(void);
+// #ifdef RT_USING_WDT
+//     if (wdg_dev)
+//     {
+//         rt_device_control(wdg_dev, RT_DEVICE_CTRL_WDT_KEEPALIVE, NULL);
+//         rt_uint32_t timeout = 32;
+//         rt_device_control(wdg_dev, RT_DEVICE_CTRL_WDT_SET_TIMEOUT, &timeout);
+//     }
+// #endif
+//     HAL_DeInit();
+//     HAL_RCC_DeInit();
+//     __disable_irq();
+//     SysTick->CTRL = 0;
+//     SysTick->LOAD = 0;
+//     SysTick->VAL = 0;
+//     HAL_RCC_DeInit();
+//     NVIC->ICER[0] = 0xFFFFFFFF;
+//     NVIC->ICPR[0] = 0xFFFFFFFF;
+//     __IO uint32_t BootAddr = 0x1FFF0000; /* STM32系统BootLoader地址 */
+//     SysMemBootJump = (void (*)(void))(*((uint32_t *)(BootAddr + 4)));
+//     __set_MSP(*(uint32_t *)BootAddr);
+//     __set_CONTROL(0);
+//     SysMemBootJump();
+//     while (1)
+//         ;
+// }
+// MSH_CMD_EXPORT_ALIAS(JumpToBootloader, reboot_loader, jump to system memory);
 
 /* defined the LED0 pin: PB1 */
 #define LED0_PIN GET_PIN(E, 9)
@@ -158,34 +158,3 @@ int main(void)
         rt_thread_mdelay(500);
     }
 }
-
-
-// static void readwrite_sample(void)
-// {
-//     int fd, size;
-//     char s[] = "RT-Thread Programmer!", buffer[80];
-
-//     rt_kprintf("Write string %s to test.txt.\n", s);
-
-//     /* 以创建和读写模式打开 /text.txt 文件，如果该文件不存在则创建该文件 */
-//     fd = open("/spiflash/text.txt", O_WRONLY | O_CREAT);
-//     if (fd >= 0)
-//     {
-//         write(fd, s, sizeof(s));
-//         close(fd);
-//         rt_kprintf("Write done.\n");
-//     }
-
-//     /* 以只读模式打开 /text.txt 文件 */
-//     fd = open("/spiflash/text.txt", O_RDONLY);
-//     if (fd >= 0)
-//     {
-//         size = read(fd, buffer, sizeof(buffer));
-//         close(fd);
-//         rt_kprintf("Read from file test.txt : %s \n", buffer);
-//         if (size < 0)
-//             return;
-//     }
-// }
-// /* 导出到 msh 命令列表中 */
-// MSH_CMD_EXPORT(readwrite_sample, readwrite sample);
