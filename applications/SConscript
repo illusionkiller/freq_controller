@@ -5,14 +5,14 @@ cwd     = GetCurrentDir()
 src     = Split("""
 main.c
 env.c
+env_cmd.c
 """)
-if GetDepend(['BSP_USING_KA']):
-    src += ['dtu_KA.c']
-if GetDepend(['BSP_USING_X']):
-    src += ['dtu_X.c']
-if GetDepend(['BSP_USING_Q']):
-    src += ['dtu_Q.c']
-
+if GetDepend(['BSP_USING_KA_UP']):
+    src += ['dtu_Ka_up.c','Ka_up.c']
+elif GetDepend(['BSP_USING_KA_DOWN']):
+    src += ['dtu_Ka_down.c','Ka_down.c']
+elif GetDepend(['BSP_USING_KU_DOWN']):
+    src += ['dtu_Ku_down.c','Ku_down.c']
 group = DefineGroup('Applications', src, depend = [''])
 
 Return('group')

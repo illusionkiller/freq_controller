@@ -113,7 +113,7 @@
 /* end of Memory Management */
 #define RT_USING_DEVICE
 #define RT_USING_CONSOLE
-#define RT_CONSOLEBUF_SIZE 256
+#define RT_CONSOLEBUF_SIZE 1024
 #define RT_CONSOLE_DEVICE_NAME "uart1"
 #define RT_VER_NUM 0x50201
 #define RT_BACKTRACE_LEVEL_MAX_NR 32
@@ -194,13 +194,6 @@
 #define RT_USING_I2C
 #define RT_USING_I2C_BITOPS
 #define RT_USING_MTD_NOR
-#define RT_USING_SDIO
-#define RT_SDIO_STACK_SIZE 1024
-#define RT_SDIO_THREAD_PRIORITY 15
-#define RT_MMCSD_STACK_SIZE 4096
-#define RT_MMCSD_THREAD_PRIORITY 11
-#define RT_MMCSD_MAX_PARTITION 16
-#define RT_SDIO_DEBUG
 #define RT_USING_SPI
 #define RT_USING_QSPI
 #define RT_USING_SFUD
@@ -291,8 +284,8 @@
 #define RT_LWIP_UDP_PCB_NUM 4
 #define RT_LWIP_TCP_PCB_NUM 4
 #define RT_LWIP_TCP_SEG_NUM 32
-#define RT_LWIP_TCP_SND_BUF 8196
-#define RT_LWIP_TCP_WND 8196
+#define RT_LWIP_TCP_SND_BUF 8192
+#define RT_LWIP_TCP_WND 8192
 #define RT_LWIP_TCPTHREAD_PRIORITY 10
 #define RT_LWIP_TCPTHREAD_MBOX_SIZE 8
 #define RT_LWIP_TCPTHREAD_STACKSIZE 4096
@@ -437,16 +430,6 @@
 /* Micrium: Micrium software products porting for RT-Thread */
 
 /* end of Micrium: Micrium software products porting for RT-Thread */
-#define PKG_USING_FLASHDB
-#define FDB_USING_KVDB
-#define FDB_KV_AUTO_UPDATE
-#define FDB_USING_FAL_MODE
-#define FDB_WRITE_GRAN_1BIT
-#define FDB_WRITE_GRAN 1
-#define FDB_NOT_USING_FILE_MODE
-#define FDB_DEBUG_ENABLE
-#define PKG_USING_FLASHDB_LATEST_VERSION
-#define PKG_FLASHDB_VER_NUM 0x99999
 #define PKG_USING_LITTLEFS
 #define PKG_USING_LITTLEFS_LATEST_VERSION
 #define LFS_READ_SIZE 256
@@ -597,6 +580,8 @@
 #define BSP_USING_COM4
 #define COM4_PORT_NAME "uart2"
 #define BSP_USING_QSPI_FLASH
+#define BSP_USING_FS
+#define BSP_USING_SPI_FLASH_LITTLEFS
 #define BSP_USING_FAL
 #define BSP_USING_ETH
 #define ETH_RESET_PIN "PC.0"
@@ -651,10 +636,10 @@
 
 /* Board extended module Drivers */
 
-/* Board type select(KA/X/Q) */
+/* Board type select(KA up/down) */
 
-#define BSP_USING_KA
-/* end of Board type select(KA/X/Q) */
+#define BSP_USING_KU_DOWN
+/* end of Board type select(KA up/down) */
 /* end of Hardware Drivers Config */
 
 #endif

@@ -418,15 +418,15 @@ menu "Board extended module Drivers"
 
 endmenu
 
-menu "Board type select(KA/X/Q)"
-        config BSP_USING_KA
-            bool "Enable KA Type"
-            default y
-        config BSP_USING_X
-            bool "Enable X Type"
+menu "Board type select(KA up/down)"
+        config BSP_USING_KA_UP
+            bool "Enable KA up Type"
             default n
-        config BSP_USING_Q
-            bool "Enable Q Type"
+        config BSP_USING_KA_DOWN
+            bool "Enable KA down Type"
+            default n
+        config BSP_USING_KU_DOWN
+            bool "Enable KU down Type"
             default n
 endmenu
 

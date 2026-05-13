@@ -131,10 +131,10 @@ char *ltoa(long value, char *string, int radix)
  *
  * @return  Returns a pointer to the destination string.
  */
-char *itoa(int value, char *string, int radix)
-{
-    return ltoa(value, string, radix);
-}
+// char *itoa(int value, char *string, int radix)
+// {
+//     return ltoa(value, string, radix);
+// }
 
 /**
  * @brief   Convert an unsigned long integer to a string representation with a specified radix.
@@ -191,7 +191,7 @@ char *ultoa(unsigned long value, char *string, int radix)
  *
  * @return  Returns a pointer to the destination string.
  */
-char *utoa(unsigned value, char *string, int radix)
-{
-    return ultoa(value, string, radix);
-}
+// char *utoa(unsigned value, char *string, int radix)
+// {
+//     return ultoa(value, string, radix);
+// }

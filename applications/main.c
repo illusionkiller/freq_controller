@@ -9,18 +9,21 @@
  */
 
 #include "drv_gpio.h"
+#include "env.h"
+#include "dfs_file.h" /* 当需要使用文件操作时，需要包含这个头文件 */
+
 #define DBG_TAG "MAIN"
 #define DBG_LVL DBG_LOG
 #include <rtdbg.h>
 static uint8_t last_reset_code = 0;
 enum
 {
-    SYSTEM_RESET_CODE_POR_RESET = 0,
-    SYSTEM_RESET_CODE_BOR_RESET,
-    SYSTEM_RESET_CODE_PIN_RESET,
-    SYSTEM_RESET_CODE_SOFT_RESET,
-    SYSTEM_RESET_CODE_WDT_RESET,
-    SYSTEM_RESET_CODE_LOWPWR_RESET,
+    SYSTEM_RESET_CODE_POR_RESET = 1 << 0,
+    SYSTEM_RESET_CODE_BOR_RESET = 1 << 1,
+    SYSTEM_RESET_CODE_PIN_RESET = 1 << 2,
+    SYSTEM_RESET_CODE_SOFT_RESET = 1 << 3,
+    SYSTEM_RESET_CODE_WDT_RESET = 1 << 4,
+    SYSTEM_RESET_CODE_LOWPWR_RESET = 1 << 5,
 };
 static int check_reset_reason(void)
 {
@@ -69,7 +72,7 @@ static rt_device_t wdg_dev = RT_NULL;
 
 static void idle_hook(void)
 {
-
+    
 }
 
 static int wdt_init(void)
@@ -105,44 +108,46 @@ INIT_DEVICE_EXPORT(wdt_init);
  *    返 回 值: 无
  ******************************************************************************************************
  */
-static void JumpToBootloader(void)
-{
-    void (*SysMemBootJump)(void);
-#ifdef RT_USING_WDT
-    if (wdg_dev)
-    {
-        rt_device_control(wdg_dev, RT_DEVICE_CTRL_WDT_KEEPALIVE, NULL);
-        rt_uint32_t timeout = 32;
-        rt_device_control(wdg_dev, RT_DEVICE_CTRL_WDT_SET_TIMEOUT, &timeout);
-    }
-#endif
-    HAL_DeInit();
-    HAL_RCC_DeInit();
-    __disable_irq();
-    SysTick->CTRL = 0;
-    SysTick->LOAD = 0;
-    SysTick->VAL = 0;
-    HAL_RCC_DeInit();
-    NVIC->ICER[0] = 0xFFFFFFFF;
-    NVIC->ICPR[0] = 0xFFFFFFFF;
-    __IO uint32_t BootAddr = 0x1FFF0000; /* STM32系统BootLoader地址 */
-    SysMemBootJump = (void (*)(void))(*((uint32_t *)(BootAddr + 4)));
-    __set_MSP(*(uint32_t *)BootAddr);
-    __set_CONTROL(0);
-    SysMemBootJump();
-    while (1)
-        ;
-}
-MSH_CMD_EXPORT_ALIAS(JumpToBootloader, reboot_loader, jump to system memory);
+// static void JumpToBootloader(void)
+// {
+//     void (*SysMemBootJump)(void);
+// #ifdef RT_USING_WDT
+//     if (wdg_dev)
+//     {
+//         rt_device_control(wdg_dev, RT_DEVICE_CTRL_WDT_KEEPALIVE, NULL);
+//         rt_uint32_t timeout = 32;
+//         rt_device_control(wdg_dev, RT_DEVICE_CTRL_WDT_SET_TIMEOUT, &timeout);
+//     }
+// #endif
+//     HAL_DeInit();
+//     HAL_RCC_DeInit();
+//     __disable_irq();
+//     SysTick->CTRL = 0;
+//     SysTick->LOAD = 0;
+//     SysTick->VAL = 0;
+//     HAL_RCC_DeInit();
+//     NVIC->ICER[0] = 0xFFFFFFFF;
+//     NVIC->ICPR[0] = 0xFFFFFFFF;
+//     __IO uint32_t BootAddr = 0x1FFF0000; /* STM32系统BootLoader地址 */
+//     SysMemBootJump = (void (*)(void))(*((uint32_t *)(BootAddr + 4)));
+//     __set_MSP(*(uint32_t *)BootAddr);
+//     __set_CONTROL(0);
+//     SysMemBootJump();
+//     while (1)
+//         ;
+// }
+// MSH_CMD_EXPORT_ALIAS(JumpToBootloader, reboot_loader, jump to system memory);
 
 /* defined the LED0 pin: PB1 */
-#define LED0_PIN    GET_PIN(E, 9)
+#define LED0_PIN GET_PIN(E, 9)
 
 int main(void)
 {
     /* set LED0 pin mode to output */
+    LOG_D("firmware version release_v%s", STR2(DTU_FIRMWARE_VERSION));
     rt_pin_mode(LED0_PIN, PIN_MODE_OUTPUT);
-    
+    extern void dtu_init_thread(void *parameter);
+    dtu_init_thread(NULL);
     while (1)
     {
         rt_pin_write(LED0_PIN, PIN_HIGH);

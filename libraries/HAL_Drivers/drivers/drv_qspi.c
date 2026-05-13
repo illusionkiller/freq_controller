@@ -276,6 +276,8 @@ static rt_ssize_t qspixfer(struct rt_spi_device *device, struct rt_spi_message *
         {
             if (rt_completion_wait(&qspi_bus->rx_cplt, HAL_QPSI_TIMEOUT_DEFAULT_VALUE) == RT_EOK)
             {
+                /* DMA writes bypass D-Cache, so drop any cached lines before CPU reads. */
+                rt_hw_cpu_dcache_ops(RT_HW_CACHE_INVALIDATE, rcvb, length);
                 result = length;
             }
             else

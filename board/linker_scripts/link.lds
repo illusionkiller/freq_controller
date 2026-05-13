@@ -7,13 +7,16 @@
 MEMORY
 {
     ROM (rx) : ORIGIN = 0x08000000, LENGTH = 2048k 
-    DTCMRAM (xrw) : ORIGIN = 0x20000000, LENGTH =  128k 
-    RAM (xrw) : ORIGIN = 0x24000000, LENGTH =  512k 
-    RAM_D2 (xrw) : ORIGIN = 0x30040000, LENGTH = 32K
-    RAM_D3 (xrw)      : ORIGIN = 0x38000000, LENGTH = 64K
+    DTCMRAM (xrw) : ORIGIN = 0x20000000, LENGTH =  128K 
+    AXI-SRAM (xrw) : ORIGIN = 0x24000000, LENGTH =  512K 
+    SRAM1 (xrw) : ORIGIN = 0x30000000, LENGTH = 128K
+    SRAM2 (xrw) : ORIGIN = 0x30020000, LENGTH = 128K
+    SRAM3 (xrw) : ORIGIN = 0x30040000, LENGTH = 32K
+    SRAM4 (xrw) : ORIGIN = 0x38000000, LENGTH = 64K
+    BACKUP-SRAM (xrw) : ORIGIN = 0x38800000, LENGTH = 4K
 }
 ENTRY(Reset_Handler)
-_system_stack_size = 0x800;
+_system_stack_size = 0x2000;
 
 SECTIONS
 {
@@ -94,15 +97,6 @@ SECTIONS
         _edata = . ;
     } >DTCMRAM
 
-    .stack :
-    {
-        . = ALIGN(4);
-        _sstack = .;
-        . = . + _system_stack_size;
-        . = ALIGN(4);
-        _estack = .;
-    } >DTCMRAM
-
     __bss_start = .;
     .bss :
     {
@@ -123,15 +117,29 @@ SECTIONS
     __bss_end = .;
     _end = .;
 
-    .lwip_sec (NOLOAD) : 
+   .stack :
+    {
+        . = ALIGN(4);
+        _sstack = .;
+        . = . + _system_stack_size;
+        . = ALIGN(4);
+        _estack = .;
+    } >DTCMRAM
+
+    .lwip_sec (NOLOAD): 
     {
         . = ALIGN(4);
         *(.RxDecripSection) 
         *(.TxDecripSection)
         *(.RxArraySection) 
         . = ALIGN(4);
-    } >RAM_D2
+    } >SRAM3
     
+    .heap_section (NOLOAD):
+    {
+        . = ALIGN(4);
+        __heap_section_start = .;
+    } >AXI-SRAM
 
     /* Stabs debugging sections.  */
     .stab          0 : { *(.stab) }
