@@ -442,7 +442,7 @@ rt_err_t config_channel_decay(uint8_t decay_value)
     channel_attr.decay_value = decay_value;
     work_item_t *work_item = get_work_item(WORK_TYPE_CONFIG_DECAY);
     if (work_item)
-        rt_work_submit(&work_item->work, 0);
+        rt_workqueue_submit_work(modbus_workqueue, &work_item->work, 0);
     return RT_EOK;
 }
 
@@ -462,13 +462,13 @@ rt_err_t config_channel_output(rt_bool_t output_en)
     work_item[1] = get_work_item(WORK_TYPE_CONFIG_CLK3_OUTPUT);
     work_item[0] = get_work_item(WORK_TYPE_CONFIG_FRECOVX2_LDOEN);
     if (work_item[0])
-        rt_work_submit(&work_item[0]->work, 0);
+        rt_workqueue_submit_work(modbus_workqueue, &work_item[0]->work, 0);
     if (work_item[1])
-        rt_work_submit(&work_item[1]->work, 0);
+        rt_workqueue_submit_work(modbus_workqueue, &work_item[1]->work, 0);
     if (work_item[2])
-        rt_work_submit(&work_item[2]->work, 0);
+        rt_workqueue_submit_work(modbus_workqueue, &work_item[2]->work, 0);
     if (work_item[3])
-        rt_work_submit(&work_item[3]->work, 0);
+        rt_workqueue_submit_work(modbus_workqueue, &work_item[3]->work, 0);
     return RT_EOK;
 }
 
@@ -498,27 +498,27 @@ rt_err_t config_channel_fre(uint64_t freq_hz, uint8_t if_idx)
     channel_attr.clk_node[2].freq_set = (channel_attr.input_freq_hz - channel_attr.input_if1_freq) / 2; // 配置本振3为固定频点
     work_item_t *work_item = get_work_item(WORK_TYPE_CONFIG_CLK3_FREQ);
     if (work_item)
-        rt_work_submit(&work_item->work, 0);
-    
+        rt_workqueue_submit_work(modbus_workqueue, &work_item->work, 0);
+
     // 配置本振1和本振2节点频率
     channel_attr.clk_node[0].freq_set = channel_attr.IF_info[closest_idx].f1_2[0];
     work_item = get_work_item(WORK_TYPE_CONFIG_CLK1_FREQ);
     if (work_item)
-        rt_work_urgent(&work_item->work);
+        rt_workqueue_urgent_work(modbus_workqueue, &work_item->work);
     channel_attr.clk_node[1].freq_set = channel_attr.IF_info[closest_idx].f1_2[1];
     work_item = get_work_item(WORK_TYPE_CONFIG_CLK2_FREQ);
     if (work_item)
-        rt_work_urgent(&work_item->work);
+        rt_workqueue_urgent_work(modbus_workqueue, &work_item->work);
     work_item = get_work_item(WORK_TYPE_CONFIG_CLK3_FREQ);
     if (work_item)
-        rt_work_urgent(&work_item->work);
+        rt_workqueue_urgent_work(modbus_workqueue, &work_item->work);
     //  配置中频
     channel_attr.if_idx = if_idx;
     frecov_node_ctrl_t *ctrl = (frecov_node_ctrl_t *)&channel_attr.frecov_node[0].ctrl_reg_set;
     ctrl->RF_PATH_SEL = channel_attr.if_idx;
     work_item = get_work_item(WORK_TYPE_CONFIG_FRECOVX2_IF_IDX);
     if (work_item)
-        rt_work_urgent(&work_item->work);
+        rt_workqueue_urgent_work(modbus_workqueue, &work_item->work);
     //补偿增益
     uint8_t compensation = channel_get_decay_compensation(freq_hz);
     channel_attr.decay_compensation_value = compensation;
@@ -535,7 +535,7 @@ rt_err_t get_pll_info(void)
 {
     work_item_t *work_item = get_work_item(WORK_TYPE_GET_PLL_INFO);
     if (work_item)
-        return rt_work_submit(&work_item->work, 0);
+        return rt_workqueue_submit_work(modbus_workqueue, &work_item->work, 0);
     return -RT_ERROR;
 }
 
@@ -546,7 +546,7 @@ rt_err_t select_pll_input_ref(uint8_t input_ref)
     ctrl->REF_10M_100M_SEL = input_ref;
     work_item_t *work_item = get_work_item(WORK_TYPE_CONFIG_PLL_INPUTREF);
     if (work_item)
-        return rt_work_submit(&work_item->work, 0);
+        return rt_workqueue_submit_work(modbus_workqueue, &work_item->work, 0);
     return -RT_ERROR;
 }
 
@@ -564,7 +564,7 @@ static void request_get_node_info_timer_callback(void *parameter)
     {
         work_item_t *work_item = get_work_item(init_work_table[i]);
         if (work_item)
-            rt_work_submit(&work_item->work, 0);
+            rt_workqueue_submit_work(modbus_workqueue, &work_item->work, 0);
     }
 }
 
@@ -596,7 +596,7 @@ int controler_init(void)
     RT_ASSERT(rtu2 != NULL);
     rtu3 = modbus_rtu_master_init(COM3_PORT_NAME); // 通道1 --本振 + 变频
     RT_ASSERT(rtu3 != NULL);
-    modbus_workqueue = rt_workqueue_create("modbus_wq", 1024, MODBUS_THREAD_PRIO - 1);
+    modbus_workqueue = rt_workqueue_create("modbus_wq", 4096, MODBUS_THREAD_PRIO - 1);
     RT_ASSERT(modbus_workqueue);
     // 初始化所有工作项
     for (int i = 0; i < sizeof(work_items) / sizeof(work_items[0]); i++)
