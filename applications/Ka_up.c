@@ -370,7 +370,7 @@ rt_err_t config_channel_link_decay(uint8_t decay_value)
     channel_attr.frecov_node[1].decay_value_set = decay_value;
     work_item_t *work_item = get_work_item(WORK_TYPE_CONFIG_KAC_FRECOV_DECAY);
     if (work_item)
-        rt_work_submit(&work_item->work, 0);
+        rt_workqueue_submit_work(modbus_workqueue, &work_item->work, 0);
     return RT_EOK;
 }
 
@@ -383,13 +383,13 @@ rt_err_t config_channel_output(rt_bool_t output_en)
     channel_attr.clk_node[2].ctrl_reg_set.OUTPUT_EN = output_en;
     work_item_t *work_item = get_work_item(WORK_TYPE_CONFIG_CLK1_OUTPUT);
     if (work_item)
-        rt_work_submit(&work_item->work, 0);
+        rt_workqueue_submit_work(modbus_workqueue, &work_item->work, 0);
     work_item = get_work_item(WORK_TYPE_CONFIG_CLK2_OUTPUT);
     if (work_item)
-        rt_work_submit(&work_item->work, 0);
+        rt_workqueue_submit_work(modbus_workqueue, &work_item->work, 0);
     work_item = get_work_item(WORK_TYPE_CONFIG_CLK3_OUTPUT);
     if (work_item)
-        rt_work_submit(&work_item->work, 0);
+        rt_workqueue_submit_work(modbus_workqueue, &work_item->work, 0);
     return RT_EOK;
 }
 
@@ -414,16 +414,16 @@ rt_err_t config_channel_fre(uint64_t freq_hz)
     channel_attr.clk_node[0].freq_set = 970000000;
     work_item_t *work_item = get_work_item(WORK_TYPE_CONFIG_CLK1_FREQ);
     if (work_item)
-        rt_work_submit(&work_item->work, 0);
+        rt_workqueue_submit_work(modbus_workqueue, &work_item->work, 0);
     // 配置本振3和本振2节点频率
     channel_attr.clk_node[2].freq_set = channel_attr.IF_info[closest_idx].f3_2[0];
     work_item = get_work_item(WORK_TYPE_CONFIG_CLK3_FREQ);
     if (work_item)
-        rt_work_urgent(&work_item->work);
+        rt_workqueue_urgent_work(modbus_workqueue, &work_item->work);
     channel_attr.clk_node[1].freq_set = channel_attr.IF_info[closest_idx].f3_2[1];
     work_item = get_work_item(WORK_TYPE_CONFIG_CLK2_FREQ);
     if (work_item)
-        rt_work_urgent(&work_item->work);
+        rt_workqueue_urgent_work(modbus_workqueue, &work_item->work);
     // 获取对应频点的衰减补偿值
     // uint8_t compensation = get_decay_compensation(freq_hz);
     // channel_attr.decay_compensation_value = compensation;
@@ -437,17 +437,17 @@ rt_err_t config_channel_fre(uint64_t freq_hz)
 static void request_get_node_info_timer_callback(void *parameter)
 {
     static int init_work_table[] = {
-        // WORK_TYPE_GET_PLL_INFO, 
+        // WORK_TYPE_GET_PLL_INFO,
         WORK_TYPE_GET_CLK1_INFO,
-        WORK_TYPE_GET_CLK2_INFO, 
+        WORK_TYPE_GET_CLK2_INFO,
         WORK_TYPE_GET_CLK3_INFO,
-        WORK_TYPE_GET_VHFLC_FRECOV_INFO, 
+        WORK_TYPE_GET_VHFLC_FRECOV_INFO,
         WORK_TYPE_GET_KAC_FRECOV_INFO};
     for (int i = 0; i < sizeof(init_work_table) / sizeof(init_work_table[0]); i++)
     {
         work_item_t *work_item = get_work_item(init_work_table[i]);
         if (work_item)
-            rt_work_submit(&work_item->work,0);
+            rt_workqueue_submit_work(modbus_workqueue, &work_item->work, 0);
     }
 }
 
@@ -455,7 +455,7 @@ rt_err_t get_pll_info(void)
 {
     work_item_t *work_item = get_work_item(WORK_TYPE_GET_PLL_INFO);
     if (work_item)
-        return rt_work_submit(&work_item->work, 0);
+        return rt_workqueue_submit_work(modbus_workqueue, &work_item->work, 0);
     return -RT_ERROR;
 }
 

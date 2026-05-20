@@ -15,7 +15,7 @@ extern "C"
 #define STR1(R) #R
 #define STR2(R) STR1(R)
 #define DTU_DEVICE_DEFAULT_SN "DTHT-" // 最长12位
-#define DTU_FIRMWARE_VERSION 1
+#define DTU_FIRMWARE_VERSION 2
 // 环境变量文件路径
 #define ENV_FILE_PATH "/spiflash/env.txt"
 #if defined BSP_USING_KA_DOWN
@@ -71,13 +71,4 @@ int env_restore_default(void);
 #ifdef __cplusplus
 }
 #endif
-#endif
-
-
-#ifndef __ENV_H_
-#define __ENV_H_
-
-
-
-
 #endif

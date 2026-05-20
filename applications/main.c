@@ -9,6 +9,7 @@
  */
 
 #include "drv_gpio.h"
+#include "msh.h"
 #include "env.h"
 #include "dfs_file.h" /* 当需要使用文件操作时，需要包含这个头文件 */
 
@@ -72,7 +73,8 @@ static rt_device_t wdg_dev = RT_NULL;
 
 static void idle_hook(void)
 {
-    
+    if (wdg_dev)
+        rt_device_control(wdg_dev, RT_DEVICE_CTRL_WDT_KEEPALIVE, NULL);
 }
 
 static int wdt_init(void)
@@ -145,15 +147,18 @@ int main(void)
 {
     /* set LED0 pin mode to output */
     LOG_D("firmware version release_v%s", STR2(DTU_FIRMWARE_VERSION));
-    rt_pin_mode(LED0_PIN, PIN_MODE_OUTPUT);
+    // if (wdg_dev)
+    //     rt_device_control(wdg_dev, RT_DEVICE_CTRL_WDT_KEEPALIVE, NULL);
     extern void dtu_init_thread(void *parameter);
-    dtu_init_thread(NULL);
+    dtu_init_thread(RT_NULL);
+    msh_exec("tftp -s", rt_strlen("tftp -s")); // 启动tftp服务器
+    rt_thread_mdelay(100);
+    msh_exec("telnet_server", rt_strlen("telnet_server")); // 启动telnet服务器
+    rt_pin_mode(LED0_PIN, PIN_MODE_OUTPUT);
     while (1)
     {
         rt_pin_write(LED0_PIN, PIN_HIGH);
         rt_thread_mdelay(500);
-        if (wdg_dev)
-            rt_device_control(wdg_dev, RT_DEVICE_CTRL_WDT_KEEPALIVE, NULL);
         rt_pin_write(LED0_PIN, PIN_LOW);
         rt_thread_mdelay(500);
     }

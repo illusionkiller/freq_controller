@@ -386,7 +386,7 @@ rt_err_t config_channel_link_decay(uint8_t decay_value)
     channel_attr.frecov_node[1].decay_value_set = decay_value;
     work_item_t *work_item = get_work_item(WORK_TYPE_CONFIG_KAC_FRECOV_DECAY);
     if (work_item)
-        rt_work_submit(&work_item->work, 0);
+        rt_workqueue_submit_work(modbus_workqueue, &work_item->work, 0);
     return RT_EOK;
 }
 
@@ -399,13 +399,13 @@ rt_err_t config_channel_output(rt_bool_t output_en)
     channel_attr.clk_node[2].ctrl_reg_set.OUTPUT_EN  = channel_attr.if_idx == 0 ? output_en : RT_FALSE;   //选择1200M通路时关闭本振3的输出影响
     work_item_t *work_item = get_work_item(WORK_TYPE_CONFIG_CLK1_OUTPUT);
     if (work_item)
-        rt_work_submit(&work_item->work, 0);
+        rt_workqueue_submit_work(modbus_workqueue, &work_item->work, 0);
     work_item = get_work_item(WORK_TYPE_CONFIG_CLK2_OUTPUT);
     if (work_item)
-        rt_work_submit(&work_item->work, 0);
+        rt_workqueue_submit_work(modbus_workqueue, &work_item->work, 0);
     work_item = get_work_item(WORK_TYPE_CONFIG_CLK3_OUTPUT);
     if (work_item)
-        rt_work_submit(&work_item->work, 0);
+        rt_workqueue_submit_work(modbus_workqueue, &work_item->work, 0);
     return RT_EOK;
 }
 
@@ -431,23 +431,23 @@ rt_err_t config_channel_fre(uint64_t freq_hz, uint8_t if_idx)
     channel_attr.clk_node[2].freq_set = 1130000000;  // 配置本振3为固定频点1130MHz
     work_item_t *work_item = get_work_item(WORK_TYPE_CONFIG_CLK3_FREQ);
     if (work_item)
-        rt_work_submit(&work_item->work, 0);
+        rt_workqueue_submit_work(modbus_workqueue, &work_item->work, 0);
     // 配置本振1和本振2节点频率
     channel_attr.clk_node[0].freq_set = channel_attr.IF_info[closest_idx].f1_2[0];
     work_item = get_work_item(WORK_TYPE_CONFIG_CLK1_FREQ);
     if (work_item)
-        rt_work_urgent(&work_item->work);
+        rt_workqueue_urgent_work(modbus_workqueue, &work_item->work);
     channel_attr.clk_node[1].freq_set = channel_attr.IF_info[closest_idx].f1_2[1];
     work_item = get_work_item(WORK_TYPE_CONFIG_CLK2_FREQ);
     if (work_item)
-        rt_work_urgent(&work_item->work);
+        rt_workqueue_urgent_work(modbus_workqueue, &work_item->work);
     // 配置变频器1中频通路
     channel_attr.if_idx = if_idx;
     clvhf_node_ctrl_t *ctrl = (clvhf_node_ctrl_t *)&channel_attr.frecov_node[0].ctrl_reg_set;
     ctrl->RF_PATH_SEL = channel_attr.if_idx;
     work_item = get_work_item(WORK_TYPE_CONFIG_CLVHF_IF);
     if (work_item)
-        rt_work_urgent(&work_item->work);
+        rt_workqueue_urgent_work(modbus_workqueue, &work_item->work);
     // 获取对应频点的衰减补偿值
     // uint8_t compensation = get_decay_compensation(freq_hz);
     // channel_attr.decay_compensation_value = compensation;
@@ -475,7 +475,7 @@ static void request_get_node_info_timer_callback(void *parameter)
     {
         work_item_t *work_item = get_work_item(init_work_table[i]);
         if (work_item)
-            rt_work_submit(&work_item->work, 0);
+            rt_workqueue_submit_work(modbus_workqueue, &work_item->work, 0);
     }
 }
 
@@ -484,7 +484,7 @@ rt_err_t get_pll_info(void)
 {
     work_item_t *work_item = get_work_item(WORK_TYPE_GET_PLL_INFO);
     if (work_item)
-        return rt_work_submit(&work_item->work, 0);
+        return rt_workqueue_submit_work(modbus_workqueue, &work_item->work, 0);
     return -RT_ERROR;
 }
 

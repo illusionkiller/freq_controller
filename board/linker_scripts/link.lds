@@ -6,7 +6,7 @@
 /* Program Entry, set to mark it as "used" and avoid gc */
 MEMORY
 {
-    ROM (rx) : ORIGIN = 0x08000000, LENGTH = 2048k 
+    ROM (rx) : ORIGIN = 0x08080000, LENGTH = 1536k
     DTCMRAM (xrw) : ORIGIN = 0x20000000, LENGTH =  128K 
     AXI-SRAM (xrw) : ORIGIN = 0x24000000, LENGTH =  512K 
     SRAM1 (xrw) : ORIGIN = 0x30000000, LENGTH = 128K
@@ -16,7 +16,9 @@ MEMORY
     BACKUP-SRAM (xrw) : ORIGIN = 0x38800000, LENGTH = 4K
 }
 ENTRY(Reset_Handler)
-_system_stack_size = 0x2000;
+_system_heap_size = 0x3000;
+_system_stack_size = 0x3000;
+
 
 SECTIONS
 {
@@ -121,6 +123,7 @@ SECTIONS
     {
         . = ALIGN(4);
         _sstack = .;
+        . = . + _system_heap_size;
         . = . + _system_stack_size;
         . = ALIGN(4);
         _estack = .;
