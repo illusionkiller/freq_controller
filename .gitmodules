@@ -1,0 +1,37 @@
+[submodule "packages/CmBacktrace-latest"]
+	path = packages/CmBacktrace-latest
+	url = https://github.com/armink-rtt-pkgs/CmBacktrace.git
+[submodule "packages/CMSIS-Core-latest"]
+	path = packages/CMSIS-Core-latest
+	url = https://github.com/RT-Thread-packages/CMSIS-Core.git
+[submodule "packages/FlashDB-latest"]
+	path = packages/FlashDB-latest
+	url = https://github.com/illusionkiller/FlashDB.git
+	branch = develop_rtt
+[submodule "packages/modbus_rt"]
+	path = packages/modbus_rt
+	url = https://github.com/illusionkiller/modbus_rt.git
+	branch = develop_rtt
+[submodule "packages/littlefs-latest"]
+	path = packages/littlefs-latest
+	url = https://github.com/RT-Thread-packages/littlefs.git
+[submodule "packages/netutils-latest"]
+	path = packages/netutils-latest
+	url = https://github.com/illusionkiller/netutils.git
+[submodule "packages/rt_kprintf_threadsafe-latest"]
+	path = packages/rt_kprintf_threadsafe-latest
+	url = https://github.com/mysterywolf/rt_kprintf_threadsafe.git
+[submodule "packages/rt_memcpy_cm-latest"]
+	path = packages/rt_memcpy_cm-latest
+	url = https://github.com/mysterywolf/rt_memcpy_cm.git
+[submodule "packages/stm32h7_cmsis_driver-latest"]
+	path = packages/stm32h7_cmsis_driver-latest
+	url = https://github.com/RT-Thread-packages/cmsis-device-h7.git
+[submodule "packages/stm32h7_hal_driver-latest"]
+	path = packages/stm32h7_hal_driver-latest
+	url = https://github.com/illusionkiller/stm32h7xx-hal-driver.git
+	branch = develop
+[submodule "packages/pcf8574"]
+	path = packages/pcf8574
+	url = https://github.com/illusionkiller/pcf8574.git
+	branch = pcf8575c_v1
