@@ -637,10 +637,10 @@
 
 /* Board extended module Drivers */
 
-/* Board type select(KA up/down) */
+/* Board type select(KA/X/Q) */
 
-#define BSP_USING_KU_DOWN
-/* end of Board type select(KA up/down) */
+#define BSP_USING_KA_DOWN
+/* end of Board type select(KA/X/Q) */
 /* end of Hardware Drivers Config */
 
 #endif

@@ -15,7 +15,7 @@ extern "C"
 #define STR1(R) #R
 #define STR2(R) STR1(R)
 #define DTU_DEVICE_DEFAULT_SN "DTHT-" // 最长12位
-#define DTU_FIRMWARE_VERSION 2
+#define DTU_FIRMWARE_VERSION 1
 // 环境变量文件路径
 #define ENV_FILE_PATH "/spiflash/env.txt"
 #if defined BSP_USING_KA_DOWN
@@ -25,27 +25,34 @@ extern "C"
     {"IP", "192.168.1.10"},                  \
     {"IP_MASK", "255.255.255.0"},            \
     {"GATE_WAY", "192.168.1.1"},             \
-    {"INPUT_FRE", "18000000000"},           \
-    {"IF_LEVEL", "0"},                   \
+    {"CH1_INPUT_FRE", "17000000000"},           \
+    {"CH1_IF_LEVEL", "0"},                   \
+    {"CH2_INPUT_FRE", "17000000000"},           \
+    {"CH2_IF_LEVEL", "0"},                   \
 }
-#elif defined BSP_USING_KA_UP
+#elif defined BSP_USING_X_DOWN
 #define DEFAULT_ENV_PARAM() {                \
     {"SN", DTU_DEVICE_DEFAULT_SN},           \
     {"version", STR2(DTU_FIRMWARE_VERSION)}, \
     {"IP", "192.168.1.10"},                  \
     {"IP_MASK", "255.255.255.0"},            \
     {"GATE_WAY", "192.168.1.1"},             \
-    {"OUTPUT_FRE", "28000000000"},          \
+    {"CH1_INPUT_FRE", "7000000000"},         \
+    {"CH1_IF_LEVEL", "0"},                   \
+    {"CH2_INPUT_FRE", "7000000000"},         \
+    {"CH2_IF_LEVEL", "0"},                   \
 }
-#elif defined BSP_USING_KU_DOWN
+#elif defined BSP_USING_Q_DOWN
 #define DEFAULT_ENV_PARAM() {                \
     {"SN", DTU_DEVICE_DEFAULT_SN},           \
     {"version", STR2(DTU_FIRMWARE_VERSION)}, \
     {"IP", "192.168.1.10"},                  \
     {"IP_MASK", "255.255.255.0"},            \
     {"GATE_WAY", "192.168.1.1"},             \
-    {"INPUT_FRE", "14000000000"},        \
-    {"IF_LEVEL", "0"},                       \
+    {"CH1_INPUT_FRE", "37000000000"},         \
+    {"CH1_IF_LEVEL", "0"},                   \
+    {"CH2_INPUT_FRE", "37000000000"},         \
+    {"CH2_IF_LEVEL", "0"},                   \
 }
 #endif
 
@@ -71,4 +78,13 @@ int env_restore_default(void);
 #ifdef __cplusplus
 }
 #endif
+#endif
+
+
+#ifndef __ENV_H_
+#define __ENV_H_
+
+
+
+
 #endif

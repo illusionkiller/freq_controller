@@ -1,5 +1,5 @@
-#ifndef __KA_H__
-#define __KA_H__
+#ifndef __X_DOWN_H__
+#define __X_DOWN_H__
 
 #include "modbus_rtu.h"
 
@@ -10,7 +10,8 @@ extern "C"
 
 #if defined BSP_USING_KA_DOWN
 
-#define MAX_DECAY_VALUE 60
+#define KA_CHANNEL_NUM (2)
+
 typedef union
 {
     struct
@@ -57,13 +58,23 @@ typedef union
     };
     uint16_t val;
 } pll_node_status_t;
+
+typedef union
+{
+    struct
+    {
+        uint16_t REF_10M_100M_SEL : 2; // D0  10M/100M参考输入选择  锁相源参考输入信号选择0:使用内部参考100M 1:使用外部参考10M 2:使用外部参考100M
+    };
+    uint16_t val;
+} pll_node_ctrl_t;
+
 typedef struct
 {
     uint16_t mb_id;
     rtu_modbus_device_t channel_handle;
     pll_node_status_t status;
-    uint16_t ctrl_reg_set;
-    uint16_t ctrl_reg_get;
+    pll_node_ctrl_t ctrl_reg_set;
+    pll_node_ctrl_t ctrl_reg_get;
     uint16_t temperature;
     uint16_t version;
     uint16_t input_ref_vol;
@@ -81,7 +92,7 @@ typedef union
         uint16_t RESERVED : 13;
     };
     uint16_t val;
-} clvhf_node_ctrl_t;
+} frecov_node_ctrl_t;
 
 // 变频模块节点属性
 typedef struct
@@ -105,6 +116,20 @@ typedef struct
     uint64_t f1_2[2]; // Hz
 } Combo;
 
+// 衰减器io映射定义
+typedef union
+{
+    struct
+    {
+        uint16_t p00 : 1;
+        uint16_t p01_06 : 6; // gs5801_1 ct1-ct6
+        uint16_t p07 : 1;
+        uint16_t p10 : 1;
+        uint16_t p11_16 : 6; // gs5801_2 ct1-ct6
+        uint16_t p17 : 1;
+    };
+    uint16_t val;
+} ct_io_map_t;
 // 2中频属性定义
 typedef struct
 {
@@ -113,13 +138,13 @@ typedef struct
     uint32_t pfd2_min; // Hz
     /* data */
 } IF_table_t;
-
-#define DEFAULT_IF_SELECT_TABLE()        \
-{                                        \
-    {1200000000ULL, 10000000, 10000000}, \
-    {1200000000ULL, 10000000, 10000000}, \
+#define DEFAULT_IF_SELECT_TABLE()       \
+{                                       \
+    {720000000ULL, 5000000, 10000000},  \
+    {1200000000ULL, 5000000, 10000000}, \
+    {1500000000ULL, 5000000, 10000000}, \
+    {1800000000ULL, 5000000, 10000000}  \
 }
-
 // 定义一个衰减补偿表给后级衰减使用
 typedef struct
 {
@@ -128,11 +153,12 @@ typedef struct
 } decay_compensation_t; // 衰减补偿
 
 #define DEFAULT_DECAY_COMPENSATION_TABLE() \
-{                                          \
-    {24000000000ULL, 0},                   \
-    {25000000000ULL, 0},                   \
-    {25500000000ULL, 0},                   \
+{                                      \
+    {24000000000, 3},                  \
+    {25000000000, 2},                  \
+    {25500000000, 1},                  \
 }
+
 typedef struct
 {
     uint64_t input_freq_hz;
@@ -140,20 +166,22 @@ typedef struct
     uint8_t decay_compensation_value;
     uint8_t decay_value;
     Combo IF_info[128];
-    pll_node_attr_t pll_node;
-    frecov_node_attr_t frecov_node[2];
-    clk_node_attr_t clk_node[3];
+    pll_node_attr_t *pll_node;
+    frecov_node_attr_t frecov_node[1];
+    rt_device_t decay_dev;
+    clk_node_attr_t clk_node[2];
     rt_bool_t output_en;
 } channel_attr_t;
 
-
-channel_attr_t get_channel_attr(void);
-rt_err_t config_channel_fre(uint64_t freq_hz, uint8_t if_idx);
-rt_err_t config_channel_link_decay(uint8_t decay_value);
-rt_err_t config_channel_output(rt_bool_t output_en);
+channel_attr_t get_channel_attr(int channel_idx);
+rt_err_t config_channel_fre(int channel_idx, uint64_t freq_hz, uint8_t if_idx);
+rt_err_t config_channel_decay(int channel_idx, uint8_t decay_value);
+rt_err_t config_channel_output(int channel_idx, rt_bool_t output_en);
+rt_err_t select_pll_input_ref(uint8_t input_ref);
 rt_err_t get_pll_info(void);
 int controler_init(void);
 #endif
+
 #ifdef __cplusplus
 }
 #endif
